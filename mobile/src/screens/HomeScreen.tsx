@@ -63,7 +63,7 @@ const HomeScreen = ({ navigation }: any) => {
       const location = await getCurrentLocation();
 
       // Fetch nearby crimes
-      const response = await crimeAPI.getCrimesNearby(
+      const response: any = await crimeAPI.getCrimesNearby(
         location.latitude,
         location.longitude,
         10 // 10km radius

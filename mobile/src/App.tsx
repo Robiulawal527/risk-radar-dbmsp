@@ -36,15 +36,13 @@ const App = () => {
       await setupNotifications();
 
       // Request notification permissions (iOS)
+      const platformVersion = Number(Platform.Version);
       if (Platform.OS === 'ios') {
         // iOS notification permissions handled by Firebase
-      } else {
-        // Android notification permissions
-        if (Platform.Version >= 33) {
-          await PermissionsAndroid.request(
-            PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
-          );
-        }
+      } else if (platformVersion >= 33) {
+        await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+        );
       }
     } catch (error) {
       console.error('App initialization error:', error);

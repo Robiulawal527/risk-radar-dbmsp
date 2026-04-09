@@ -7,6 +7,12 @@ import io from 'socket.io-client';
 const API_URL = Config.API_URL || 'http://localhost:5000/api/v1';
 const WS_URL = Config.WS_URL || 'ws://localhost:5000';
 
+type ApiResponse<T = any> = {
+  success?: boolean;
+  data?: T;
+  message?: string;
+};
+
 // Create axios instance
 const api = axios.create({
   baseURL: API_URL,
@@ -47,7 +53,7 @@ api.interceptors.response.use(
 // Authentication API
 export const authAPI = {
   login: async (email: string, password: string) => {
-    const response = await api.post('/auth/login', { email, password });
+    const response = await api.post('/auth/login', { email, password }) as ApiResponse<any>;
     if (response.success && response.data.token) {
       await AsyncStorage.setItem('token', response.data.token);
       await AsyncStorage.setItem('user', JSON.stringify(response.data.user));
@@ -56,7 +62,7 @@ export const authAPI = {
   },
 
   register: async (userData: any) => {
-    const response = await api.post('/auth/register', userData);
+    const response = await api.post('/auth/register', userData) as ApiResponse<any>;
     if (response.success && response.data.token) {
       await AsyncStorage.setItem('token', response.data.token);
       await AsyncStorage.setItem('user', JSON.stringify(response.data.user));

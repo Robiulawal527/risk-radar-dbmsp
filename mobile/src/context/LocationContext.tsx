@@ -67,7 +67,8 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setPermissionGranted(true);
           
           // Request background location (Android 10+)
-          if (Platform.Version >= 29) {
+          const platformVersion = Number(Platform.Version);
+        if (platformVersion >= 29) {
             const bgGranted = await PermissionsAndroid.request(
               PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
               {
@@ -100,7 +101,7 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             altitude: position.coords.altitude || undefined,
             speed: position.coords.speed || undefined,
             heading: position.coords.heading || undefined,
-            timestamp: position.timestamp,
+            timestamp: Number(position.timestamp),
           };
           
           setCurrentLocation(location);
@@ -173,7 +174,7 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             altitude: location.coords.altitude,
             speed: location.coords.speed,
             heading: location.coords.heading,
-            timestamp: location.timestamp,
+            timestamp: Number(location.timestamp),
           };
 
           setCurrentLocation(loc);

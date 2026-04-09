@@ -3,6 +3,12 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authAPI, wsService } from '../services/api';
 
+type ApiResponse<T = any> = {
+  success?: boolean;
+  data?: T;
+  message?: string;
+};
+
 interface User {
   id: string;
   email: string;
@@ -59,7 +65,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Verify token is still valid
         try {
-          const response = await authAPI.getMe();
+          const response = await authAPI.getMe() as ApiResponse<any>;
           if (response.success && response.data) {
             setUser(response.data);
             await AsyncStorage.setItem('user', JSON.stringify(response.data));
@@ -78,7 +84,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await authAPI.login(email, password);
+      const response = await authAPI.login(email, password) as ApiResponse<any>;
       
       if (response.success && response.data.user) {
         setUser(response.data.user);
@@ -106,7 +112,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         password,
         fullName,
         phone,
-      });
+      }) as ApiResponse<any>;
 
       if (response.success && response.data.user) {
         setUser(response.data.user);
@@ -138,7 +144,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateProfile = async (data: any) => {
     try {
-      const response = await authAPI.updateProfile(data);
+      const response = await authAPI.updateProfile(data) as ApiResponse<any>;
       
       if (response.success && response.data) {
         const updatedUser = { ...user, ...response.data };

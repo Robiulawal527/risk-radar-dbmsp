@@ -1,142 +1,112 @@
 # Risk Radar
 
-Risk Radar is a public safety monitoring application that provides interactive crime analytics, geospatial risk mapping, and role-based dashboards. It consists of a Vite-powered React frontend and an Express backend API.
-
-## Key features
-
-- Interactive risk heatmap and location analysis
-- Role-aware user interface for admin, police, and normal users
-- Real-time notifications and alerts
-- Analytics dashboards and reporting pages
-- Clean frontend architecture with React, TypeScript, Tailwind CSS, and Leaflet
+Risk Radar is a public safety monitoring application with separate web and mobile clients. The web app is built with React, TypeScript, Vite, and Tailwind CSS. The mobile app is a React Native project maintained independently under `mobile/`.
 
 ## Repository structure
 
 ```text
-/               # project root
-├── frontend/          # React frontend application
-│   ├── src/           # application source code
-│   │   ├── app/       # routes, pages, components, context
-│   │   ├── styles/    # global styles and Tailwind assets
-│   │   └── main.tsx   # app entry point
-│   └── index.html     # frontend HTML entry point
-├── backend/           # backend and server-related files
-│   └── server/        # Express API server
-│       ├── src/
-│       └── package.json
-├── database/          # database schema and docs
-├── package.json       # root frontend package manifest
-├── tsconfig.json      # shared TypeScript configuration
-└── vite.config.ts     # frontend build and dev config
+/                       # monorepo root
+├── web/                 # web application
+│   ├── frontend/        # web source files
+│   ├── package.json     # web package manifest
+│   ├── tsconfig.json    # web TypeScript config
+│   └── vite.config.ts   # web Vite config
+├── mobile/              # mobile application
+│   ├── src/             # React Native source files
+│   ├── package.json     # mobile package manifest
+│   └── app.json         # Expo/app config
+├── backend/             # backend API server
+│   └── server/
+├── database/            # database schema and docs
+├── package.json         # monorepo root package with workspace scripts
+├── setup.sh             # project setup helper
+└── install.sh           # automated install helper
 ```
 
 ## Tech stack
 
-- Frontend: React, TypeScript, Vite, Tailwind CSS, Leaflet, React Router
-- Backend: Node.js, Express, WebSocket, PostgreSQL-ready architecture
-- Build tooling: Vite, TypeScript, npm
+- Web: React, TypeScript, Vite, Tailwind CSS, Leaflet, React Router
+- Mobile: React Native, React Navigation, Expo-style config
+- Backend: Node.js, Express, WebSocket
 
 ## Prerequisites
 
 - Node.js 18 or later
 - npm 9 or later
-- Optional for backend: PostgreSQL 14+
+- Optional: PostgreSQL for backend API
 
 ## Setup
 
-1. Open a terminal.
-2. Change to the repository root:
+From the repository root:
 
 ```bash
 cd /Users/robiulawal/UIU/risk-radar
-```
-
-3. Install frontend dependencies:
-
-```bash
 npm install
 ```
 
-## Running the frontend
+This installs the workspace dependencies for both `web/` and `mobile/`.
 
-From the project root:
+## Run the web app
+
+From the repository root:
 
 ```bash
-npm run dev
+npm run web:dev
 ```
 
-Open the app in your browser:
+Then open:
 
 ```text
 http://localhost:3000
 ```
 
-## Production build
-
-To create a production-ready bundle:
+## Build the web app
 
 ```bash
-npm run build
+npm run web:build
 ```
 
-## Type checking
-
-To validate TypeScript types:
+## Type check the web app
 
 ```bash
-npm run type-check
+npm run web:type-check
 ```
 
-## Backend usage
+## Run the mobile app
 
-The backend API is located in `backend/server/` and runs independently.
-
-1. Change to the backend folder:
+From the repository root:
 
 ```bash
-cd backend/server
+npm run mobile:start
 ```
 
-2. Install backend packages:
+For Android:
 
 ```bash
-npm install
+npm run mobile:android
 ```
 
-3. Start the backend server:
+For iOS (macOS only):
 
 ```bash
-npm run dev
+npm run mobile:ios
 ```
 
-4. Configure environment variables using `backend/server/.env.example`.
+## Run the backend
 
-## Running the full stack
-
-For local development, start both services in separate terminals:
-
-Terminal 1:
 ```bash
-cd /Users/robiulawal/UIU/risk-radar
-npm run dev
-```
-
-Terminal 2:
-```bash
-cd /Users/robiulawal/UIU/risk-radar/backend/server
-npm install
-npm run dev
+npm run backend:start
 ```
 
 ## Notes
 
-- The root `package.json` controls the frontend app.
-- The frontend uses `vite.config.ts` with `frontend/` as the Vite root.
-- Ensure `frontend/src/main.tsx` imports `./styles/index.css` to apply global styles.
+- `web/` and `mobile/` are now separated into distinct apps.
+- The root `package.json` provides workspace scripts for both clients.
+- `backend/` remains independent and can be started from `backend/server`.
 
 ## Troubleshooting
 
-- If the frontend does not appear correctly, verify that `npm install` completed successfully.
-- Confirm `http://localhost:3000` is reachable and the Vite server is running.
-- For backend errors, verify `.env` settings and database connectivity.
-- If assets fail to load, check `frontend/index.html` and `vite.config.ts`.
+- If workspace install fails, run `npm install` from the repository root again.
+- If the web app fails to start, verify `web/frontend/src/main.tsx` imports `./styles/index.css`.
+- If the mobile app fails to start, confirm the native project files are available and installed.
+- If backend errors occur, verify `backend/server/.env` and database settings.

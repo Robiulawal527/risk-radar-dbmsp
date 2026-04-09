@@ -18,7 +18,7 @@ export const setupNotifications = async () => {
         importance: Importance.HIGH,
         vibrate: true,
       },
-      (created) => console.log(`Crime alerts channel created: ${created}`)
+      (created: boolean) => console.log(`Crime alerts channel created: ${created}`)
     );
 
     PushNotification.createChannel(
@@ -31,14 +31,14 @@ export const setupNotifications = async () => {
         importance: Importance.HIGH,
         vibrate: true,
       },
-      (created) => console.log(`Emergency channel created: ${created}`)
+      (created: boolean) => console.log(`Emergency channel created: ${created}`)
     );
   }
 
   // Configure local notifications
   PushNotification.configure({
     // Called when a remote is received or opened
-    onNotification: function (notification) {
+    onNotification: function (notification: any) {
       console.log('NOTIFICATION:', notification);
       
       // Handle notification tap
