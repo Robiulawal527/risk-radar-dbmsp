@@ -1,55 +1,79 @@
 # Risk Radar
 
-Risk Radar is a crime and public safety dashboard built with a modern React frontend and a Node/Express backend. The project includes an interactive risk map, analytics pages, user management, and real-time notification support.
+Risk Radar is a public safety monitoring application that provides interactive crime analytics, geospatial risk mapping, and role-based dashboards. It consists of a Vite-powered React frontend and an Express backend API.
 
-## Project structure
+## Key features
 
-- `frontend/` - Vite-powered React application
-  - `src/` - app source code, routes, components, pages, styles
-  - `index.html` - frontend entry HTML
-  - `tsconfig.json` - TypeScript configuration included at repo root
-- `backend/server/` - Express API server
-  - `src/` - backend routes, controllers, middleware, utilities
-- `database/` - schema and database-related documentation
-- `package.json` - frontend package definition and dev scripts
-- `vite.config.ts` - Vite configuration with `frontend/` as project root
+- Interactive risk heatmap and location analysis
+- Role-aware user interface for admin, police, and normal users
+- Real-time notifications and alerts
+- Analytics dashboards and reporting pages
+- Clean frontend architecture with React, TypeScript, Tailwind CSS, and Leaflet
+
+## Repository structure
+
+```text
+/               # project root
+├── frontend/          # React frontend application
+│   ├── src/           # application source code
+│   │   ├── app/       # routes, pages, components, context
+│   │   ├── styles/    # global styles and Tailwind assets
+│   │   └── main.tsx   # app entry point
+│   └── index.html     # frontend HTML entry point
+├── backend/           # backend and server-related files
+│   └── server/        # Express API server
+│       ├── src/
+│       └── package.json
+├── database/          # database schema and docs
+├── package.json       # root frontend package manifest
+├── tsconfig.json      # shared TypeScript configuration
+└── vite.config.ts     # frontend build and dev config
+```
+
+## Tech stack
+
+- Frontend: React, TypeScript, Vite, Tailwind CSS, Leaflet, React Router
+- Backend: Node.js, Express, WebSocket, PostgreSQL-ready architecture
+- Build tooling: Vite, TypeScript, npm
 
 ## Prerequisites
 
-- Node.js 18+ (recommended)
-- npm 9+ or pnpm
-- Optional for backend: PostgreSQL 14+ if you want to run the API locally
+- Node.js 18 or later
+- npm 9 or later
+- Optional for backend: PostgreSQL 14+
 
 ## Setup
 
-From repository root:
+1. Open a terminal.
+2. Change to the repository root:
 
 ```bash
 cd /Users/robiulawal/UIU/risk-radar
+```
+
+3. Install frontend dependencies:
+
+```bash
 npm install
 ```
 
-This installs frontend dependencies and the tooling needed to run the project.
+## Running the frontend
 
-## Run the frontend
-
-From repository root:
+From the project root:
 
 ```bash
 npm run dev
 ```
 
-Then open:
+Open the app in your browser:
 
 ```text
 http://localhost:3000
 ```
 
-This command uses Vite with the frontend root configured to `frontend/`.
+## Production build
 
-## Build for production
-
-From repository root:
+To create a production-ready bundle:
 
 ```bash
 npm run build
@@ -57,45 +81,62 @@ npm run build
 
 ## Type checking
 
-From repository root:
+To validate TypeScript types:
 
 ```bash
 npm run type-check
 ```
 
-## Backend notes
+## Backend usage
 
-The backend lives in `backend/server/` and uses its own `package.json`.
+The backend API is located in `backend/server/` and runs independently.
 
-To run the backend:
+1. Change to the backend folder:
 
 ```bash
 cd backend/server
+```
+
+2. Install backend packages:
+
+```bash
+npm install
+```
+
+3. Start the backend server:
+
+```bash
+npm run dev
+```
+
+4. Configure environment variables using `backend/server/.env.example`.
+
+## Running the full stack
+
+For local development, start both services in separate terminals:
+
+Terminal 1:
+```bash
+cd /Users/robiulawal/UIU/risk-radar
+npm run dev
+```
+
+Terminal 2:
+```bash
+cd /Users/robiulawal/UIU/risk-radar/backend/server
 npm install
 npm run dev
 ```
 
-The backend provides an Express API and WebSocket support. You may need to create a `.env` file based on `backend/server/.env.example` and configure PostgreSQL if you need the full backend functionality.
-
-## Recommended workflow
-
-1. Install frontend dependencies in repo root
-2. Start the frontend with `npm run dev`
-3. In a separate terminal, install and start backend services if needed
-
 ## Notes
 
-- The frontend uses TypeScript, Tailwind CSS, `@vitejs/plugin-react`, and Leaflet for mapping.
-- The current root `package.json` has frontend scripts and uses Vite to serve the app from `frontend/`.
-- The backend is separate and must be started from `backend/server/`.
+- The root `package.json` controls the frontend app.
+- The frontend uses `vite.config.ts` with `frontend/` as the Vite root.
+- Ensure `frontend/src/main.tsx` imports `./styles/index.css` to apply global styles.
 
 ## Troubleshooting
 
-- If the app does not start, verify Node.js version with `node -v`
-- Ensure dependencies are installed with `npm install`
-- If Vite fails, confirm `frontend/index.html` exists and `vite.config.ts` root is set to `frontend`
-- For backend issues, check `backend/server/.env` and database configuration
-
-## Contact
-
-For project fixes or further updates, check the repo structure and verify the `frontend/src/main.tsx` and `vite.config.ts` entries.
+- If the frontend does not appear correctly, verify that `npm install` completed successfully.
+- Confirm `http://localhost:3000` is reachable and the Vite server is running.
+- For backend errors, verify `.env` settings and database connectivity.
+- If assets fail to load, check `frontend/index.html` and `vite.config.ts`.
