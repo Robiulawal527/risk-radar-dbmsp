@@ -1,5 +1,5 @@
 import type { ComponentType, SVGProps } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { Button } from './ui/button';
@@ -21,11 +21,16 @@ export default function Navbar() {
   const { user, logout, isAdmin } = useAuth();
   const { language, toggleLanguage, t } = useLanguage();
   const navigate = useNavigate();
+  const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
     navigate('/');
+  };
+
+  const isActiveRoute = (path: string) => {
+    return location.pathname === path;
   };
 
   type NavItem = {
@@ -65,9 +70,13 @@ export default function Navbar() {
             {navItems.map(item => item.show && (
               <Button
                 key={item.path}
-                variant="ghost"
+                variant={isActiveRoute(item.path) ? "default" : "ghost"}
                 onClick={() => navigate(item.path)}
-                className="flex items-center space-x-2"
+                className={`flex items-center space-x-2 ${
+                  isActiveRoute(item.path) 
+                    ? "bg-red-600 text-white hover:bg-red-700" 
+                    : ""
+                }`}
               >
                 <item.icon className="w-4 h-4" />
                 <span>{item.label}</span>
@@ -122,12 +131,16 @@ export default function Navbar() {
             {navItems.map(item => item.show && (
               <Button
                 key={item.path}
-                variant="ghost"
+                variant={isActiveRoute(item.path) ? "default" : "ghost"}
                 onClick={() => {
                   navigate(item.path);
                   setMobileMenuOpen(false);
                 }}
-                className="w-full justify-start flex items-center space-x-2"
+                className={`w-full justify-start flex items-center space-x-2 ${
+                  isActiveRoute(item.path) 
+                    ? "bg-red-600 text-white hover:bg-red-700" 
+                    : ""
+                }`}
               >
                 <item.icon className="w-4 h-4" />
                 <span>{item.label}</span>
