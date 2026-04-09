@@ -176,9 +176,9 @@ export const mockCriminals = [
 ];
 
 // AI-based crime prediction (mock)
-export const predictCrimeHotspots = (crimes) => {
+export const predictCrimeHotspots = (crimes: any[]) => {
   // Group crimes by area
-  const areaFrequency = {};
+  const areaFrequency: Record<string, number> = {};
   crimes.forEach(crime => {
     areaFrequency[crime.area] = (areaFrequency[crime.area] || 0) + 1;
   });
