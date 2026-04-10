@@ -1,0 +1,28 @@
+{
+  "name": "risk-radar",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "web",
+    "mobile"
+  ],
+  "scripts": {
+    "web:dev": "npm --prefix web run dev",
+    "web:build": "npm --prefix web run build",
+    "web:type-check": "npm --prefix web run type-check",
+    "web:preview": "npm --prefix web run preview",
+    "mobile:start": "npm --prefix mobile run start",
+    "mobile:android": "npm --prefix mobile run android",
+    "mobile:ios": "npm --prefix mobile run ios",
+    "backend:start": "cd backend/server && npm install && npm run dev"
+  },
+  "dependencies": {
+    "expo": "~55.0.13",
+    "react": "19.2.0",
+    "react-native": "0.83.4"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.10",
+    "typescript": "~5.9.2"
+  }
+}
