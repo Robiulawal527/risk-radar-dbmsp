@@ -107,6 +107,61 @@ CREATE INDEX idx_crime_incidents_severity ON crime_incidents(severity);
 CREATE INDEX idx_crime_incidents_area ON crime_incidents(area_id);
 
 -- ============================================
+-- PUBLIC CRIMINAL RANKINGS AND PRIVATE PROFILES
+-- ============================================
+CREATE TABLE criminal_profiles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    display_name VARCHAR(255) NOT NULL,
+    alias VARCHAR(255),
+    primary_crime_type_id VARCHAR(50) REFERENCES crime_types(id),
+    known_area_id UUID REFERENCES areas(id),
+    severity_score DECIMAL(5, 2) DEFAULT 0 CHECK (severity_score BETWEEN 0 AND 100),
+    incident_count INTEGER DEFAULT 0,
+    last_seen_at TIMESTAMP,
+    status VARCHAR(30) DEFAULT 'wanted' CHECK (status IN ('wanted', 'arrested', 'under_surveillance', 'inactive')),
+    public_summary TEXT,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_criminal_profiles_score ON criminal_profiles(severity_score DESC);
+CREATE INDEX idx_criminal_profiles_status ON criminal_profiles(status);
+
+CREATE TABLE victim_profiles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    crime_incident_id UUID REFERENCES crime_incidents(id) ON DELETE CASCADE,
+    full_name VARCHAR(255),
+    phone VARCHAR(20),
+    support_status VARCHAR(30) DEFAULT 'new' CHECK (support_status IN ('new', 'contacted', 'supported', 'closed')),
+    privacy_level VARCHAR(30) DEFAULT 'private' CHECK (privacy_level IN ('private', 'police_only', 'admin_only')),
+    notes TEXT,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_victim_profiles_incident ON victim_profiles(crime_incident_id);
+CREATE INDEX idx_victim_profiles_user ON victim_profiles(user_id);
+
+CREATE TABLE volunteer_profiles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    skills TEXT[],
+    service_areas TEXT[],
+    availability VARCHAR(30) DEFAULT 'on_call' CHECK (availability IN ('on_call', 'available', 'unavailable')),
+    verification_status VARCHAR(30) DEFAULT 'pending' CHECK (verification_status IN ('pending', 'verified', 'rejected')),
+    emergency_contact VARCHAR(255),
+    notes TEXT,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_volunteer_profiles_status ON volunteer_profiles(verification_status, availability);
+
+-- ============================================
 -- USER LOCATIONS (Real-time tracking)
 -- ============================================
 CREATE TABLE user_locations (
@@ -252,6 +307,15 @@ CREATE TRIGGER update_areas_updated_at BEFORE UPDATE ON areas
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_crime_incidents_updated_at BEFORE UPDATE ON crime_incidents
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_criminal_profiles_updated_at BEFORE UPDATE ON criminal_profiles
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_victim_profiles_updated_at BEFORE UPDATE ON victim_profiles
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_volunteer_profiles_updated_at BEFORE UPDATE ON volunteer_profiles
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================

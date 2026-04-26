@@ -1,6 +1,6 @@
 // Environment configuration helper
 export const config = {
-  apiUrl: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  apiUrl: import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1',
   wsUrl: import.meta.env.VITE_WS_URL || 'ws://localhost:5000',
   appName: import.meta.env.VITE_APP_NAME || 'Risk Radar',
   appVersion: import.meta.env.VITE_APP_VERSION || '1.0.0',
@@ -18,6 +18,7 @@ export const config = {
     analytics: import.meta.env.VITE_ENABLE_ANALYTICS === 'true',
     notifications: import.meta.env.VITE_ENABLE_NOTIFICATIONS === 'true',
     websocket: import.meta.env.VITE_ENABLE_WEBSOCKET === 'true',
+    mockApi: import.meta.env.VITE_USE_MOCK_API === 'true',
   },
   
   // Helper methods

@@ -58,6 +58,7 @@ app.use(`/api/${apiVersion}/analytics`, require('./routes/analytics.routes'));
 app.use(`/api/${apiVersion}/notifications`, require('./routes/notification.routes'));
 app.use(`/api/${apiVersion}/routes`, require('./routes/route.routes'));
 app.use(`/api/${apiVersion}/emergency`, require('./routes/emergency.routes'));
+app.use(`/api/${apiVersion}/profiles`, require('./routes/profile.routes'));
 
 // 404 handler
 app.use((req, res) => {
@@ -68,7 +69,7 @@ app.use((req, res) => {
 });
 
 // Error handler
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   logger.error(err.stack);
   
   const statusCode = err.statusCode || 500;

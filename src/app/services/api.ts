@@ -3,7 +3,7 @@
 
 import config from '../config/env';
 
-const USE_MOCK_API = true; // Set to false when real backend is available
+const USE_MOCK_API = config.features.mockApi;
 const API_URL = config.apiUrl;
 
 // ============================================================================

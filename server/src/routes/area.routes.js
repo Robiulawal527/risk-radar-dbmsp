@@ -23,6 +23,16 @@ router.get('/', optionalAuth, async (req, res) => {
   }
 });
 
+// Get high-risk areas
+router.get('/risk/high', optionalAuth, async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM v_high_risk_areas LIMIT 20');
+    res.json({ success: true, data: result.rows });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Get area by ID
 router.get('/:id', optionalAuth, async (req, res) => {
   try {
@@ -38,16 +48,6 @@ router.get('/:id', optionalAuth, async (req, res) => {
     }
 
     res.json({ success: true, data: result.rows[0] });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// Get high-risk areas
-router.get('/risk/high', optionalAuth, async (req, res) => {
-  try {
-    const result = await query('SELECT * FROM v_high_risk_areas LIMIT 20');
-    res.json({ success: true, data: result.rows });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

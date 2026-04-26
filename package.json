@@ -1,11 +1,16 @@
 {
-  "name": "@figma/my-make-file",
+  "name": "risk-radar",
   "private": true,
   "version": "0.0.1",
   "type": "module",
   "scripts": {
     "build": "vite build",
     "dev": "vite",
+    "dev:web": "vite",
+    "dev:api": "npm --prefix server run dev",
+    "dev:mobile": "npm --prefix mobile run start",
+    "data:crime": "node scripts/generateCrimeStats.mjs",
+    "build:web": "vite build",
     "preview": "vite preview",
     "lint": "echo 'Linting not configured'",
     "type-check": "tsc --noEmit",

@@ -1,4 +1,4 @@
-const { query, transaction } = require('../config/database');
+const { query } = require('../config/database');
 const logger = require('../utils/logger');
 const { emitToRole } = require('../services/websocket');
 

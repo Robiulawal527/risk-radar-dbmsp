@@ -115,7 +115,7 @@ export default function InteractiveMap({
         if (!mapInstanceRef.current) return;
         
         // Create heatmap
-        const heatData = crimes.map(crime => {
+        const heatData: [number, number, number][] = crimes.map(crime => {
           // Intensity based on severity
           const intensity = crime.severity / 5;
           return [crime.lat, crime.lng, intensity];
