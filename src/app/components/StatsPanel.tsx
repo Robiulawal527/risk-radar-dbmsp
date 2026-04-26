@@ -3,6 +3,7 @@ import { TrendingUp, AlertTriangle, Activity, Target } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import {
   calculateAreaRiskScore,
+  crimeDataSource,
   dhakaAreas,
   type GeneratedCrime,
 } from '../utils/crimeData';
@@ -11,19 +12,16 @@ export default function StatsPanel({ crimes }: { crimes: GeneratedCrime[] }) {
   const { language, t } = useLanguage();
 
   // Calculate statistics
-  const totalCrimes = crimes.length;
+  const totalCrimes = crimes.reduce((sum, crime) => sum + (crime.caseCount || 1), 0);
   
   const highRiskZones = dhakaAreas.filter(area => {
     const score = calculateAreaRiskScore(area, crimes);
     return score >= 60;
   }).length;
 
-  const last7Days = crimes.filter(crime => {
-    const crimeDate = new Date(crime.date);
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    return crimeDate >= weekAgo;
-  }).length;
+  const latestPeriodCases = crimes
+    .filter((crime) => crime.status === 'latest')
+    .reduce((sum, crime) => sum + (crime.caseCount || 1), 0);
 
   const avgRiskScore = Math.round(
     dhakaAreas.reduce((sum, area) => sum + calculateAreaRiskScore(area, crimes), 0) / dhakaAreas.length
@@ -51,8 +49,8 @@ export default function StatsPanel({ crimes }: { crimes: GeneratedCrime[] }) {
     {
       title: t('recentIncidents'),
       titlebn: 'সাম্প্রতিক ঘটনা',
-      value: last7Days,
-      suffix: language === 'en' ? '(7 days)' : '(৭ দিন)',
+      value: latestPeriodCases,
+      suffix: language === 'en' ? `(${crimeDataSource.latestPeriod})` : '(সর্বশেষ)',
       icon: TrendingUp,
       color: 'from-orange-500 to-orange-600',
       bgColor: 'bg-orange-50',

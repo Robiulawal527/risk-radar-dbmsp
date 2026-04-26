@@ -18,7 +18,7 @@ export const config = {
     analytics: import.meta.env.VITE_ENABLE_ANALYTICS === 'true',
     notifications: import.meta.env.VITE_ENABLE_NOTIFICATIONS === 'true',
     websocket: import.meta.env.VITE_ENABLE_WEBSOCKET === 'true',
-    mockApi: import.meta.env.VITE_USE_MOCK_API === 'true',
+    mockApi: import.meta.env.VITE_USE_MOCK_API !== 'false',
   },
   
   // Helper methods

@@ -140,9 +140,9 @@ export default function CrimeDetailsPanel({
         <div className="grid grid-cols-2 gap-4 pt-4 border-t">
           <div>
             <p className="text-sm text-gray-600">
-              {language === 'en' ? 'Victims' : 'ভিকটিম'}
+              {language === 'en' ? 'Cases' : 'মামলা'}
             </p>
-            <p className="font-semibold">{crime.victims}</p>
+            <p className="font-semibold">{(crime.caseCount || crime.victims).toLocaleString()}</p>
           </div>
           <div>
             <p className="text-sm text-gray-600">

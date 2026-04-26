@@ -251,7 +251,7 @@ const latestYear = Math.max(...rows.map((row) => Number(row.Year)));
 const latestRows = rows.filter((row) => Number(row.Year) === latestYear);
 const latestMonthNumber = Math.max(...latestRows.map((row) => monthIndex[row.Month] ?? 0));
 const latestMonthName = Object.keys(monthIndex).find((name) => monthIndex[name] === latestMonthNumber);
-const mapRows = rows.filter((row) => Number(row.Year) >= latestYear - 1);
+const mapRows = rows.filter((row) => Number(row.Year) === latestYear && row.Month === latestMonthName);
 
 const monthlyStats = rows.map((row) => ({
   year: Number(row.Year),
@@ -338,7 +338,7 @@ export const bangladeshCrimeSource = ${JSON.stringify({
   file: 'data/crime-statistics-bangladesh-2020-25.csv',
   rows: rows.length,
   latestPeriod: `${latestMonthName} ${latestYear}`,
-  mapPeriod: `${latestYear - 1}-${latestYear}`
+  mapPeriod: `${latestMonthName} ${latestYear}`
 }, null, 2)} as const;
 
 export const bangladeshCrimeTypes = ${JSON.stringify(crimeTypes.map(({ csv, nameBn, ...type }) => ({ ...type, namebn: nameBn, csvLabel: csv })), null, 2)} as const;

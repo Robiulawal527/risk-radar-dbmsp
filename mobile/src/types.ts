@@ -25,6 +25,7 @@ export type Crime = {
   area?: string;
   area_bn?: string;
   color?: string;
+  caseCount?: number;
 };
 
 export type Area = {
