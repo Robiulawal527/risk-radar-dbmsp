@@ -1,0 +1,2 @@
+import { AlertTriangle, ShieldCheck } from "lucide-react";
+export default function AlertCard({type,area,time,level="danger"}){const danger=level==="danger";return <div className="glass p-4 rounded-2xl flex gap-4 items-center">{danger?<AlertTriangle className="text-red-500"/>:<ShieldCheck className="text-green-400"/>}<div className="flex-1"><h4 className={danger?"text-red-400 font-bold":"text-green-400 font-bold"}>{type}</h4><p className="text-sm text-slate-300">{area}</p></div><p className="text-xs text-slate-500">{time}</p></div>}

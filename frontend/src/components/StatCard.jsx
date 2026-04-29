@@ -1,0 +1,1 @@
+export default function StatCard({title,value,change,color="text-red-400"}){return <div className="glass p-5 rounded-2xl"><p className="text-sm text-slate-400">{title}</p><h3 className="text-3xl font-bold mt-2">{value}</h3><p className={`text-sm mt-2 ${color}`}>{change}</p></div>}

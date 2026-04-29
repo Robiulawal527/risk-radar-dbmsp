@@ -1,0 +1,26 @@
+{
+  "name": "risk-radar-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "latest",
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-router-dom": "latest",
+    "lucide-react": "latest",
+    "recharts": "latest",
+    "leaflet": "latest",
+    "leaflet.heat": "latest",
+    "react-leaflet": "latest",
+    "tailwindcss": "latest"
+  },
+  "devDependencies": {}
+}
