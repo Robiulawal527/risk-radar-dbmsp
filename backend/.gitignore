@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Env files (VERY IMPORTANT)
+.env
+
+# Logs
+logs/
+*.log
+
+# Database files (if local DB used)
+*.sqlite
+*.db
+
+# Uploads (if you later add file uploads)
+uploads/
+
+# Temp
+tmp/
+temp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
