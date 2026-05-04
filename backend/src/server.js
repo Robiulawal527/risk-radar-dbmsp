@@ -1,11 +1,24 @@
+import dotenv from "dotenv";
 import express from "express";
 import cors from "cors";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import {
+  initMysqlProfiles,
+  isMysqlProfiles,
+  mysqlListProfiles,
+  mysqlGetByNid,
+  mysqlUpsertProfile,
+  mysqlUpdatePartial,
+  mysqlDeleteProfile,
+  mysqlRecordAction
+} from "./mysqlProfiles.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+/** Always load backend/.env (not cwd), so MySQL works when the server is started from the repo root. */
+dotenv.config({ path: path.join(__dirname, "../.env") });
 const DATA_PATH = path.join(__dirname, "../data/crime-statistics-bangladesh-2020-25.csv");
 const PROFILES_PATH = path.join(__dirname, "../data/profiles.json");
 
@@ -109,25 +122,64 @@ function normalizeProfile(profile) {
       ? [profile.intents]
       : ["Friendship"];
 
+  const rawId = profile.id;
+  const idStr =
+    rawId != null && rawId !== ""
+      ? String(rawId)
+      : Date.now().toString();
+
   return {
-    id: profile.id || Date.now().toString(),
+    id: idStr,
     nid: String(profile.nid || ""),
     name: profile.name || "Unknown",
     email: profile.email || "",
-    age: profile.age || "",
+    age: profile.age ?? "",
     location: profile.location || "",
     profession: profile.profession || "",
     bio: profile.bio || "",
     interests: Array.isArray(profile.interests) ? profile.interests : [],
     intents,
-    crimeScore: Number(profile.crimeScore || 0),
-    philanthropyScore: Number(profile.philanthropyScore || 0),
+    crimeScore: Number(profile.crimeScore) || 0,
+    philanthropyScore: Number(profile.philanthropyScore) || 0,
     history: Array.isArray(profile.history) ? profile.history : []
   };
 }
 
 function trustScore(profile) {
-  return Math.max(0, 100 - profile.crimeScore * 12 + profile.philanthropyScore * 10);
+  const c = Number(profile.crimeScore) || 0;
+  const p = Number(profile.philanthropyScore) || 0;
+  return Math.max(0, 100 - c * 12 + p * 10);
+}
+
+function filterProfilesQuery(profiles, req) {
+  const { intent, q } = req.query;
+  const search = String(q || "").trim().toLowerCase();
+  const targetIntent = String(intent || "").trim().toLowerCase();
+
+  return profiles
+    .map(normalizeProfile)
+    .filter((profile) => {
+      if (targetIntent && !profile.intents.some((item) => item.toLowerCase() === targetIntent)) {
+        return false;
+      }
+      if (!search) return true;
+      const haystack = [
+        profile.name,
+        profile.nid,
+        profile.profession,
+        profile.location,
+        profile.bio,
+        ...profile.interests
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(search);
+    })
+    .map((profile) => ({
+      ...profile,
+      trustScore: trustScore(profile)
+    }))
+    .sort((a, b) => b.trustScore - a.trustScore);
 }
 
 const rows = readDataset();
@@ -162,7 +214,15 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.get("/api/health", (_, res) => res.json({ ok: true, records: rows.length }));
+app.get("/api/health", (_, res) =>
+  res.json({
+    ok: true,
+    records: rows.length,
+    profilesStorage: isMysqlProfiles() ? "mysql" : "json",
+    mysqlConfigured: Boolean(process.env.MYSQL_HOST),
+    mysqlDatabase: process.env.MYSQL_DATABASE || (isMysqlProfiles() ? "risk_radar" : null)
+  })
+);
 
 app.get("/api/crimes", (req, res) => {
   const data = filterRows(req).map((row) => {
@@ -250,133 +310,202 @@ app.get("/api/dashboard", (_, res) => {
   });
 });
 
-app.get("/api/profiles", (req, res) => {
-  const { intent, q } = req.query;
-  const search = String(q || "").trim().toLowerCase();
-  const targetIntent = String(intent || "").trim().toLowerCase();
-
-  const profiles = readProfiles()
-    .map(normalizeProfile)
-    .filter((profile) => {
-      if (targetIntent && !profile.intents.some((item) => item.toLowerCase() === targetIntent)) {
-        return false;
-      }
-      if (!search) return true;
-      const haystack = [
-        profile.name,
-        profile.nid,
-        profile.profession,
-        profile.location,
-        profile.bio,
-        ...profile.interests
-      ].join(" ").toLowerCase();
-      return haystack.includes(search);
-    })
-    .map((profile) => ({
-      ...profile,
-      trustScore: trustScore(profile)
-    }))
-    .sort((a, b) => b.trustScore - a.trustScore);
-
-  res.json(profiles);
+app.get("/api/profiles", async (req, res) => {
+  try {
+    let raw;
+    if (isMysqlProfiles()) {
+      raw = await mysqlListProfiles();
+    } else {
+      raw = readProfiles();
+    }
+    res.json(filterProfilesQuery(raw, req));
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Failed to load profiles" });
+  }
 });
 
-app.get("/api/profiles/:nid", (req, res) => {
-  const profile = readProfiles().map(normalizeProfile).find((item) => item.nid === req.params.nid);
-  if (!profile) return res.status(404).json({ error: "Profile not found" });
-  res.json({
-    ...profile,
-    trustScore: trustScore(profile)
-  });
+app.get("/api/profiles/:nid", async (req, res) => {
+  try {
+    let profile;
+    if (isMysqlProfiles()) {
+      profile = await mysqlGetByNid(req.params.nid);
+    } else {
+      profile = readProfiles().map(normalizeProfile).find((item) => item.nid === req.params.nid);
+    }
+    if (!profile) return res.status(404).json({ error: "Profile not found" });
+    const normalized = normalizeProfile(profile);
+    res.json({
+      ...normalized,
+      trustScore: trustScore(normalized)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Failed to load profile" });
+  }
 });
 
-app.post("/api/profiles", (req, res) => {
+app.post("/api/profiles", async (req, res) => {
   const { nid, name } = req.body;
   if (!nid || !name) return res.status(400).json({ error: "NID and name are required" });
 
-  const profiles = readProfiles().map(normalizeProfile);
-  const existingIndex = profiles.findIndex((item) => item.nid === String(nid));
-  const payload = normalizeProfile({
-    ...req.body,
-    nid: String(nid),
-    name
-  });
+  try {
+    if (isMysqlProfiles()) {
+      const existed = await mysqlGetByNid(String(nid));
+      const saved = await mysqlUpsertProfile({ ...req.body, nid: String(nid), name });
+      const normalized = normalizeProfile(saved);
+      return res.status(existed ? 200 : 201).json({
+        ...normalized,
+        trustScore: trustScore(normalized),
+        storage: "mysql"
+      });
+    }
 
-  if (existingIndex === -1) profiles.push(payload);
-  else profiles[existingIndex] = { ...profiles[existingIndex], ...payload, id: profiles[existingIndex].id };
+    const profiles = readProfiles().map(normalizeProfile);
+    const existingIndex = profiles.findIndex((item) => item.nid === String(nid));
+    const payload = normalizeProfile({
+      ...req.body,
+      nid: String(nid),
+      name
+    });
 
-  saveProfiles(profiles);
+    if (existingIndex === -1) profiles.push(payload);
+    else profiles[existingIndex] = { ...profiles[existingIndex], ...payload, id: profiles[existingIndex].id };
 
-  const saved = profiles.find((item) => item.nid === String(nid));
-  res.status(existingIndex === -1 ? 201 : 200).json({
-    ...saved,
-    trustScore: trustScore(saved)
-  });
+    saveProfiles(profiles);
+
+    const saved = profiles.find((item) => item.nid === String(nid));
+    res.status(existingIndex === -1 ? 201 : 200).json({
+      ...saved,
+      trustScore: trustScore(saved),
+      storage: "json"
+    });
+  } catch (err) {
+    console.error("POST /api/profiles", err);
+    res.status(500).json({ error: err.message || "Failed to save profile" });
+  }
 });
 
-app.post("/api/profiles/action", (req, res) => {
+app.post("/api/profiles/action", async (req, res) => {
   const { nid, name, type, details } = req.body;
   if (!nid || !name || !type) {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
-  const profiles = readProfiles().map(normalizeProfile);
-  let profile = profiles.find((p) => p.nid === nid);
+  try {
+    if (isMysqlProfiles()) {
+      if (type !== "crime" && type !== "philanthropy") {
+        return res.status(400).json({ error: "Invalid type" });
+      }
+      const profile = await mysqlRecordAction({ nid, name, type, details });
+      const normalized = normalizeProfile(profile);
+      return res.json({
+        ...normalized,
+        trustScore: trustScore(normalized)
+      });
+    }
 
-  if (!profile) {
-    profile = normalizeProfile({ nid, name });
-    profiles.push(profile);
+    const profiles = readProfiles().map(normalizeProfile);
+    let profile = profiles.find((p) => p.nid === nid);
+
+    if (!profile) {
+      profile = normalizeProfile({ nid, name });
+      profiles.push(profile);
+    }
+
+    if (type === "crime") {
+      profile.crimeScore += 1;
+    } else if (type === "philanthropy") {
+      profile.philanthropyScore += 1;
+    } else {
+      return res.status(400).json({ error: "Invalid type" });
+    }
+
+    profile.history.push({
+      type,
+      details: details || "",
+      date: new Date().toISOString()
+    });
+
+    saveProfiles(profiles);
+    res.json({
+      ...profile,
+      trustScore: trustScore(profile)
+    });
+  } catch (err) {
+    console.error("POST /api/profiles/action", err);
+    res.status(500).json({ error: err.message || "Failed to record action" });
   }
-
-  if (type === "crime") {
-    profile.crimeScore += 1;
-  } else if (type === "philanthropy") {
-    profile.philanthropyScore += 1;
-  } else {
-    return res.status(400).json({ error: "Invalid type" });
-  }
-
-  profile.history.push({
-    type,
-    details: details || "",
-    date: new Date().toISOString()
-  });
-
-  saveProfiles(profiles);
-  res.json({
-    ...profile,
-    trustScore: trustScore(profile)
-  });
 });
 
-app.put("/api/profiles/:nid", (req, res) => {
+app.put("/api/profiles/:nid", async (req, res) => {
   const { nid } = req.params;
   const { bio, profession, intents, email, age, location, interests } = req.body;
-  
-  const profiles = readProfiles().map(normalizeProfile);
-  const profileIndex = profiles.findIndex((p) => p.nid === nid);
-  
-  if (profileIndex === -1) {
-    return res.status(404).json({ error: "Profile not found" });
+
+  try {
+    if (isMysqlProfiles()) {
+      const updated = await mysqlUpdatePartial(nid, {
+        bio,
+        profession,
+        intents,
+        email,
+        age,
+        location,
+        interests
+      });
+      if (!updated) return res.status(404).json({ error: "Profile not found" });
+      const normalized = normalizeProfile(updated);
+      return res.json({
+        ...normalized,
+        trustScore: trustScore(normalized)
+      });
+    }
+
+    const profiles = readProfiles().map(normalizeProfile);
+    const profileIndex = profiles.findIndex((p) => p.nid === nid);
+
+    if (profileIndex === -1) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+
+    profiles[profileIndex] = {
+      ...profiles[profileIndex],
+      bio: bio !== undefined ? bio : profiles[profileIndex].bio,
+      profession: profession !== undefined ? profession : profiles[profileIndex].profession,
+      intents: intents !== undefined ? (Array.isArray(intents) ? intents : [intents]) : profiles[profileIndex].intents,
+      email: email !== undefined ? email : profiles[profileIndex].email,
+      age: age !== undefined ? age : profiles[profileIndex].age,
+      location: location !== undefined ? location : profiles[profileIndex].location,
+      interests: interests !== undefined ? (Array.isArray(interests) ? interests : []) : profiles[profileIndex].interests
+    };
+
+    saveProfiles(profiles);
+    res.json({
+      ...profiles[profileIndex],
+      trustScore: trustScore(profiles[profileIndex])
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Failed to update profile" });
   }
-  
-  profiles[profileIndex] = {
-    ...profiles[profileIndex],
-    bio: bio !== undefined ? bio : profiles[profileIndex].bio,
-    profession: profession !== undefined ? profession : profiles[profileIndex].profession,
-    intents: intents !== undefined ? (Array.isArray(intents) ? intents : [intents]) : profiles[profileIndex].intents,
-    email: email !== undefined ? email : profiles[profileIndex].email,
-    age: age !== undefined ? age : profiles[profileIndex].age,
-    location: location !== undefined ? location : profiles[profileIndex].location,
-    interests: interests !== undefined ? (Array.isArray(interests) ? interests : []) : profiles[profileIndex].interests
-  };
-  
-  saveProfiles(profiles);
-  res.json({
-    ...profiles[profileIndex],
-    trustScore: trustScore(profiles[profileIndex])
-  });
+});
+
+app.delete("/api/profiles/:nid", async (req, res) => {
+  const { nid } = req.params;
+  try {
+    if (isMysqlProfiles()) {
+      const ok = await mysqlDeleteProfile(nid);
+      if (!ok) return res.status(404).json({ error: "Profile not found" });
+      return res.status(204).send();
+    }
+
+    const profiles = readProfiles().map(normalizeProfile);
+    const next = profiles.filter((p) => p.nid !== nid);
+    if (next.length === profiles.length) return res.status(404).json({ error: "Profile not found" });
+    saveProfiles(next);
+    res.status(204).send();
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Failed to delete profile" });
+  }
 });
 
 const PORT = process.env.PORT || 5000;
+await initMysqlProfiles();
 app.listen(PORT, () => console.log(`Risk Radar API running on http://localhost:${PORT}`));

@@ -11,16 +11,16 @@
   "dependencies": {
     "@tailwindcss/vite": "latest",
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "react-router-dom": "latest",
-    "lucide-react": "latest",
-    "recharts": "latest",
     "leaflet": "latest",
     "leaflet.heat": "latest",
+    "lucide-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
     "react-leaflet": "latest",
-    "tailwindcss": "latest"
-  },
-  "devDependencies": {}
+    "react-router-dom": "latest",
+    "recharts": "latest",
+    "socket.io-client": "^4.8.3",
+    "tailwindcss": "latest",
+    "vite": "latest"
+  }
 }

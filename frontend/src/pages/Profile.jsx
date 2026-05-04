@@ -47,7 +47,13 @@ export default function Profile() {
       };
       const profile = await api.saveProfile(payload);
       setSavedProfile(profile);
-      setMessage("Profile saved. You are now discoverable in Social Radar.");
+      if (profile.storage === "mysql") {
+        setMessage("Profile saved to MySQL. You are discoverable in Social Radar.");
+      } else {
+        setMessage(
+          "Profile saved to the API’s local JSON file (not MySQL). Put MYSQL_HOST and related vars in backend/.env, then restart the backend so data goes to MySQL."
+        );
+      }
     } catch (err) {
       setMessage("Could not save profile. Please check required fields.");
     } finally {
@@ -119,7 +125,14 @@ export default function Profile() {
               <p className="text-slate-400 mt-1">{savedProfile.name} • Trust Score {savedProfile.trustScore}/100</p>
               <p className="mt-3 text-slate-300">{savedProfile.bio || "No bio added yet."}</p>
               <p className="mt-2 text-sm text-slate-400">
-                Intents: {savedProfile.intents.join(", ")} | Interests: {(savedProfile.interests || []).join(", ") || "N/A"}
+                Stored in:{" "}
+                <span className={savedProfile.storage === "mysql" ? "text-green-400" : "text-amber-400"}>
+                  {savedProfile.storage === "mysql" ? "MySQL" : "JSON file"}
+                </span>
+                {" · "}
+                Intents:{" "}
+                {(Array.isArray(savedProfile.intents) ? savedProfile.intents : [savedProfile.intents || "Friendship"]).join(", ")}{" "}
+                | Interests: {(savedProfile.interests || []).join(", ") || "N/A"}
               </p>
             </div>
           )}

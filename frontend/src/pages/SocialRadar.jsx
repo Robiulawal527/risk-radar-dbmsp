@@ -13,10 +13,12 @@ export default function SocialRadar() {
 
   const handleEditClick = (profile) => {
     setEditingProfile(profile);
+    const intents = profile.intents;
+    const intentValue = Array.isArray(intents) ? intents[0] || "Friendship" : intents || "Friendship";
     setFormData({
       bio: profile.bio || "",
       profession: profile.profession || "",
-      intents: profile.intents || "Friendship",
+      intents: intentValue,
     });
   };
 
@@ -31,7 +33,8 @@ export default function SocialRadar() {
     }
   };
 
-  const filteredProfiles = profiles.filter((profile) => {
+  const profileList = Array.isArray(profiles) ? profiles : [];
+  const filteredProfiles = profileList.filter((profile) => {
     if (activeIntent === "All") return true;
     return (profile.intents || []).includes(activeIntent);
   });

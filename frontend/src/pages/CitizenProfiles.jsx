@@ -3,11 +3,24 @@ import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import { api } from "../api/client";
 import { useApi } from "../hooks/useApi";
+import { Trash2 } from "lucide-react";
 
 export default function CitizenProfiles() {
   const { data: profiles, loading, refetch } = useApi(useCallback(() => api.getProfiles(), []), []);
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({ nid: "", name: "", type: "crime", details: "" });
+
+  const profileList = Array.isArray(profiles) ? profiles : [];
+
+  const handleDelete = async (nid) => {
+    if (!window.confirm(`Delete profile ${nid}? This cannot be undone.`)) return;
+    try {
+      await api.deleteProfile(nid);
+      refetch();
+    } catch {
+      alert("Failed to delete profile");
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -47,22 +60,37 @@ export default function CitizenProfiles() {
                   <th className="p-4 text-left">Philanthropy Score</th>
                   <th className="p-4 text-left">Trust Score</th>
                   <th className="p-4 text-left">Looking For</th>
+                  <th className="p-4 text-right w-24">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {profiles.map((profile) => (
+                {profileList.map((profile) => (
                   <tr key={profile.id} className="border-t border-slate-800 hover:bg-slate-800/50">
                     <td className="p-4 font-mono text-slate-300">{profile.nid}</td>
                     <td className="p-4 font-bold">{profile.name}</td>
                     <td className="p-4 text-red-400 font-bold">{profile.crimeScore}</td>
                     <td className="p-4 text-green-400 font-bold">{profile.philanthropyScore}</td>
                     <td className="p-4 text-blue-400 font-bold">{profile.trustScore}</td>
-                    <td className="p-4 text-slate-400">{(profile.intents || []).join(", ") || "Friendship"}</td>
+                    <td className="p-4 text-slate-400">
+                      {Array.isArray(profile.intents)
+                        ? profile.intents.join(", ") || "Friendship"
+                        : profile.intents || "Friendship"}
+                    </td>
+                    <td className="p-4 text-right">
+                      <button
+                        type="button"
+                        title="Delete profile"
+                        className="inline-flex items-center justify-center p-2 rounded-lg text-slate-500 hover:text-red-400 hover:bg-slate-800 transition"
+                        onClick={() => handleDelete(profile.nid)}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
-                {profiles.length === 0 && !loading && (
+                {profileList.length === 0 && !loading && (
                   <tr>
-                    <td colSpan="6" className="p-8 text-center text-slate-500">
+                    <td colSpan="7" className="p-8 text-center text-slate-500">
                       No citizen profiles found.
                     </td>
                   </tr>

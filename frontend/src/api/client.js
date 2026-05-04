@@ -32,6 +32,15 @@ async function putRequest(path, data) {
   return response.json();
 }
 
+async function deleteRequest(path) {
+  const response = await fetch(`${API_BASE}${path}`, { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+  }
+  if (response.status === 204) return null;
+  return response.json();
+}
+
 export const api = {
   getCrimes: (params = {}) => request(`/crimes?${new URLSearchParams(params)}`),
   getHeatmap: (params = {}) => request(`/heatmap?${new URLSearchParams(params)}`),
@@ -41,4 +50,5 @@ export const api = {
   saveProfile: (data) => postRequest("/profiles", data),
   recordAction: (data) => postRequest("/profiles/action", data),
   updateProfile: (nid, data) => putRequest(`/profiles/${nid}`, data),
+  deleteProfile: (nid) => deleteRequest(`/profiles/${nid}`),
 };

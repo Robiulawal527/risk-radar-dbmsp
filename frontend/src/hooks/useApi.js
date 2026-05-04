@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 export function useApi(fetcher, initialValue) {
   const [data, setData] = useState(initialValue);
@@ -19,7 +19,7 @@ export function useApi(fetcher, initialValue) {
     };
   }, [fetcher, reloadKey]);
 
-  const refetch = () => setReloadKey((key) => key + 1);
+  const refetch = useCallback(() => setReloadKey((key) => key + 1), []);
 
   return { data, loading, error, refetch };
 }
