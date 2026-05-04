@@ -1,8 +1,10 @@
-import { LayoutDashboard, Map, Bell, ShieldAlert, User, Settings, FilePlus } from "lucide-react";
+import { LayoutDashboard, Map, Bell, ShieldAlert, User, Settings, FilePlus, Users } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 const items = [
   { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard }, { name: "Map", path: "/map", icon: Map },
   { name: "Alerts", path: "/alerts", icon: Bell }, { name: "SOS", path: "/sos", icon: ShieldAlert },
+  { name: "Citizens", path: "/citizens", icon: User },
+  { name: "Social Radar", path: "/social", icon: Users },
   { name: "Report Crime", path: "/map", icon: FilePlus }, { name: "Profile", path: "/profile", icon: User },
   { name: "Settings", path: "/profile", icon: Settings }, { name: "Admin", path: "/admin", icon: LayoutDashboard },
 ];

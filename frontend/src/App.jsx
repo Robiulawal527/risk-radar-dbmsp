@@ -9,6 +9,8 @@ import SOS from "./pages/SOS";
 import Profile from "./pages/Profile";
 import AdminDashboard from "./pages/AdminDashboard";
 import CrimeRecords from "./pages/CrimeRecords";
+import CitizenProfiles from "./pages/CitizenProfiles";
+import SocialRadar from "./pages/SocialRadar";
 
 export default function App() {
   return (
@@ -23,6 +25,8 @@ export default function App() {
       <Route path="/profile" element={<Profile />} />
       <Route path="/admin" element={<AdminDashboard />} />
       <Route path="/admin/crimes" element={<CrimeRecords />} />
+      <Route path="/citizens" element={<CitizenProfiles />} />
+      <Route path="/social" element={<SocialRadar />} />
     </Routes>
   );
 }

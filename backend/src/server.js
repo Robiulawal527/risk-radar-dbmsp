@@ -7,6 +7,7 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_PATH = path.join(__dirname, "../data/crime-statistics-bangladesh-2020-25.csv");
+const PROFILES_PATH = path.join(__dirname, "../data/profiles.json");
 
 const UNIT_COORDS = {
   DMP: { name: "Dhaka Metropolitan", area: "Dhaka", lat: 23.8103, lng: 90.4125 },
@@ -86,6 +87,47 @@ function readDataset() {
       topCrimeCount: maxCategory?.[1] || 0
     };
   });
+}
+
+function readProfiles() {
+  try {
+    const data = fs.readFileSync(PROFILES_PATH, "utf8");
+    return JSON.parse(data);
+  } catch (err) {
+    return [];
+  }
+}
+
+function saveProfiles(profiles) {
+  fs.writeFileSync(PROFILES_PATH, JSON.stringify(profiles, null, 2), "utf8");
+}
+
+function normalizeProfile(profile) {
+  const intents = Array.isArray(profile.intents)
+    ? profile.intents
+    : profile.intents
+      ? [profile.intents]
+      : ["Friendship"];
+
+  return {
+    id: profile.id || Date.now().toString(),
+    nid: String(profile.nid || ""),
+    name: profile.name || "Unknown",
+    email: profile.email || "",
+    age: profile.age || "",
+    location: profile.location || "",
+    profession: profile.profession || "",
+    bio: profile.bio || "",
+    interests: Array.isArray(profile.interests) ? profile.interests : [],
+    intents,
+    crimeScore: Number(profile.crimeScore || 0),
+    philanthropyScore: Number(profile.philanthropyScore || 0),
+    history: Array.isArray(profile.history) ? profile.history : []
+  };
+}
+
+function trustScore(profile) {
+  return Math.max(0, 100 - profile.crimeScore * 12 + profile.philanthropyScore * 10);
 }
 
 const rows = readDataset();
@@ -205,6 +247,134 @@ app.get("/api/dashboard", (_, res) => {
     trend,
     categories: CATEGORIES,
     units: Object.keys(UNIT_COORDS)
+  });
+});
+
+app.get("/api/profiles", (req, res) => {
+  const { intent, q } = req.query;
+  const search = String(q || "").trim().toLowerCase();
+  const targetIntent = String(intent || "").trim().toLowerCase();
+
+  const profiles = readProfiles()
+    .map(normalizeProfile)
+    .filter((profile) => {
+      if (targetIntent && !profile.intents.some((item) => item.toLowerCase() === targetIntent)) {
+        return false;
+      }
+      if (!search) return true;
+      const haystack = [
+        profile.name,
+        profile.nid,
+        profile.profession,
+        profile.location,
+        profile.bio,
+        ...profile.interests
+      ].join(" ").toLowerCase();
+      return haystack.includes(search);
+    })
+    .map((profile) => ({
+      ...profile,
+      trustScore: trustScore(profile)
+    }))
+    .sort((a, b) => b.trustScore - a.trustScore);
+
+  res.json(profiles);
+});
+
+app.get("/api/profiles/:nid", (req, res) => {
+  const profile = readProfiles().map(normalizeProfile).find((item) => item.nid === req.params.nid);
+  if (!profile) return res.status(404).json({ error: "Profile not found" });
+  res.json({
+    ...profile,
+    trustScore: trustScore(profile)
+  });
+});
+
+app.post("/api/profiles", (req, res) => {
+  const { nid, name } = req.body;
+  if (!nid || !name) return res.status(400).json({ error: "NID and name are required" });
+
+  const profiles = readProfiles().map(normalizeProfile);
+  const existingIndex = profiles.findIndex((item) => item.nid === String(nid));
+  const payload = normalizeProfile({
+    ...req.body,
+    nid: String(nid),
+    name
+  });
+
+  if (existingIndex === -1) profiles.push(payload);
+  else profiles[existingIndex] = { ...profiles[existingIndex], ...payload, id: profiles[existingIndex].id };
+
+  saveProfiles(profiles);
+
+  const saved = profiles.find((item) => item.nid === String(nid));
+  res.status(existingIndex === -1 ? 201 : 200).json({
+    ...saved,
+    trustScore: trustScore(saved)
+  });
+});
+
+app.post("/api/profiles/action", (req, res) => {
+  const { nid, name, type, details } = req.body;
+  if (!nid || !name || !type) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  const profiles = readProfiles().map(normalizeProfile);
+  let profile = profiles.find((p) => p.nid === nid);
+
+  if (!profile) {
+    profile = normalizeProfile({ nid, name });
+    profiles.push(profile);
+  }
+
+  if (type === "crime") {
+    profile.crimeScore += 1;
+  } else if (type === "philanthropy") {
+    profile.philanthropyScore += 1;
+  } else {
+    return res.status(400).json({ error: "Invalid type" });
+  }
+
+  profile.history.push({
+    type,
+    details: details || "",
+    date: new Date().toISOString()
+  });
+
+  saveProfiles(profiles);
+  res.json({
+    ...profile,
+    trustScore: trustScore(profile)
+  });
+});
+
+app.put("/api/profiles/:nid", (req, res) => {
+  const { nid } = req.params;
+  const { bio, profession, intents, email, age, location, interests } = req.body;
+  
+  const profiles = readProfiles().map(normalizeProfile);
+  const profileIndex = profiles.findIndex((p) => p.nid === nid);
+  
+  if (profileIndex === -1) {
+    return res.status(404).json({ error: "Profile not found" });
+  }
+  
+  profiles[profileIndex] = {
+    ...profiles[profileIndex],
+    bio: bio !== undefined ? bio : profiles[profileIndex].bio,
+    profession: profession !== undefined ? profession : profiles[profileIndex].profession,
+    intents: intents !== undefined ? (Array.isArray(intents) ? intents : [intents]) : profiles[profileIndex].intents,
+    email: email !== undefined ? email : profiles[profileIndex].email,
+    age: age !== undefined ? age : profiles[profileIndex].age,
+    location: location !== undefined ? location : profiles[profileIndex].location,
+    interests: interests !== undefined ? (Array.isArray(interests) ? interests : []) : profiles[profileIndex].interests
+  };
+  
+  saveProfiles(profiles);
+  res.json({
+    ...profiles[profileIndex],
+    trustScore: trustScore(profiles[profileIndex])
   });
 });
 

@@ -1,0 +1,35 @@
+[
+  {
+    "id": "1777921907648",
+    "nid": "2345678",
+    "name": "Robi",
+    "crimeScore": 1,
+    "philanthropyScore": 1,
+    "history": [
+      {
+        "type": "crime",
+        "details": "theft",
+        "date": "2026-05-04T19:11:47.648Z"
+      },
+      {
+        "type": "philanthropy",
+        "details": "donation",
+        "date": "2026-05-04T19:17:45.602Z"
+      }
+    ]
+  },
+  {
+    "id": "1777921959057",
+    "nid": "123456789",
+    "name": "Shiku",
+    "crimeScore": 0,
+    "philanthropyScore": 1,
+    "history": [
+      {
+        "type": "philanthropy",
+        "details": "donation",
+        "date": "2026-05-04T19:12:39.057Z"
+      }
+    ]
+  }
+]
