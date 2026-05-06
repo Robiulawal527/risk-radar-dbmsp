@@ -134,5 +134,22 @@
         "date": "2026-05-04T20:27:25.699Z"
       }
     ]
+  },
+  {
+    "id": "1778067360280",
+    "nid": "6455479789",
+    "name": "Anik Roy",
+    "email": "anikroy8131@gmail.com",
+    "age": "",
+    "location": "",
+    "profession": "",
+    "bio": "",
+    "interests": [],
+    "intents": [
+      "Friendship"
+    ],
+    "crimeScore": 0,
+    "philanthropyScore": 0,
+    "history": []
   }
 ]
