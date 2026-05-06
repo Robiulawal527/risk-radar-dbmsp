@@ -16,11 +16,11 @@ export default function Signup() {
           className="w-full bg-slate-950 p-3 rounded-xl mb-4"
           placeholder="Email"
         />
-          <input
-            className="w-full bg-slate-950 p-3 rounded-xl mb-4"
-            placeholder="Phone Number"
-            type="text"
-          />
+        <input
+          className="w-full bg-slate-950 p-3 rounded-xl mb-4"
+          placeholder="Phone Number"
+          type="text"
+        />
         <input
           className="w-full bg-slate-950 p-3 rounded-xl mb-4"
           placeholder="Create Password"
@@ -33,10 +33,9 @@ export default function Signup() {
         />
         <input
           className="w-full bg-slate-950 p-3 rounded-xl mb-4"
-          placeholder=" NID Number"
+          placeholder="NID Number"
           type="text"
         />
-      
         <Link to="/dashboard">
           <button className="w-full bg-red-600 py-3 rounded-xl font-bold">
             Sign Up

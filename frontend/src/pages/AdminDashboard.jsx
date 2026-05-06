@@ -17,12 +17,15 @@ import {
 } from "recharts";
 
 export default function AdminDashboard() {
-  const { data } = useApi(useCallback(() => api.getDashboard(), []), {
-    stats: {},
-    rankings: [],
-    categoryChart: [],
-    trend: [],
-  });
+  const { data } = useApi(
+    useCallback(() => api.getDashboard(), []),
+    {
+      stats: {},
+      rankings: [],
+      categoryChart: [],
+      trend: [],
+    },
+  );
 
   return (
     <div className="flex min-h-screen">
@@ -35,10 +38,28 @@ export default function AdminDashboard() {
           <h1 className="text-3xl font-bold">Admin Dashboard</h1>
 
           <div className="grid md:grid-cols-4 gap-4">
-            <StatCard title="Total Cases" value={data.stats.totalCases?.toLocaleString() || "..."} change="All CSV rows" />
-            <StatCard title="Data Records" value={data.stats.totalRecords || "..."} change="Monthly unit records" color="text-green-400" />
-            <StatCard title="Avg Cases/Record" value={data.stats.averageMonthlyCases?.toLocaleString() || "..."} change="Calculated live" color="text-green-400" />
-            <StatCard title="High Risk Units" value={data.stats.highRiskAreas || "..."} change="Score ≥ 70" />
+            <StatCard
+              title="Total Cases"
+              value={data.stats.totalCases?.toLocaleString() || "..."}
+              change="All CSV rows"
+            />
+            <StatCard
+              title="Data Records"
+              value={data.stats.totalRecords || "..."}
+              change="Monthly unit records"
+              color="text-green-400"
+            />
+            <StatCard
+              title="Avg Cases/Record"
+              value={data.stats.averageMonthlyCases?.toLocaleString() || "..."}
+              change="Calculated live"
+              color="text-green-400"
+            />
+            <StatCard
+              title="High Risk Units"
+              value={data.stats.highRiskAreas || "..."}
+              change="Score ≥ 70"
+            />
           </div>
 
           <div className="grid lg:grid-cols-2 gap-5">
@@ -49,7 +70,13 @@ export default function AdminDashboard() {
                   <XAxis dataKey="month" />
                   <YAxis />
                   <Tooltip />
-                  <Line type="monotone" dataKey="crimes" stroke="#ef4444" strokeWidth={3} dot={false} />
+                  <Line
+                    type="monotone"
+                    dataKey="crimes"
+                    stroke="#ef4444"
+                    strokeWidth={3}
+                    dot={false}
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -58,9 +85,28 @@ export default function AdminDashboard() {
               <h2 className="font-bold mb-4">Crime by Category</h2>
               <ResponsiveContainer width="100%" height="85%">
                 <PieChart>
-                  <Pie data={data.categoryChart} dataKey="value" outerRadius={100} label>
+                  <Pie
+                    data={data.categoryChart}
+                    dataKey="value"
+                    outerRadius={100}
+                    label
+                  >
                     {data.categoryChart.map((_, index) => (
-                      <Cell key={index} fill={["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#a855f7", "#14b8a6", "#64748b"][index]} />
+                      <Cell
+                        key={index}
+                        fill={
+                          [
+                            "#ef4444",
+                            "#f97316",
+                            "#eab308",
+                            "#22c55e",
+                            "#3b82f6",
+                            "#a855f7",
+                            "#14b8a6",
+                            "#64748b",
+                          ][index]
+                        }
+                      />
                     ))}
                   </Pie>
                   <Tooltip />
