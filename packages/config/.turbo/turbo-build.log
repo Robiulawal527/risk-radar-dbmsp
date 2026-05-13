@@ -1,0 +1,4 @@
+
+> @risk-radar/config@1.0.0 build /Users/robiulawal/Projects/risk-radar/packages/config
+> tsc -p tsconfig.json
+

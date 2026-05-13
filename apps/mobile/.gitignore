@@ -1,0 +1,27 @@
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native (prebuild / bare workflow)
+ios/
+android/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+*.keystore
+
+# Metro / bundler
+.metro-health-check*
+
+# Dependencies & logs
+node_modules/
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# @generated expo-cli
+# @end expo-cli

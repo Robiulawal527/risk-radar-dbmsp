@@ -1,0 +1,4 @@
+
+> @risk-radar/mobile@1.0.0 type-check /Users/robiulawal/Projects/risk-radar/apps/mobile
+> tsc --noEmit
+

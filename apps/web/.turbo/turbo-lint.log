@@ -1,0 +1,4 @@
+
+> @risk-radar/web@1.0.0 lint /Users/robiulawal/Projects/risk-radar/apps/web
+> tsc --noEmit
+

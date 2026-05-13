@@ -1,0 +1,4 @@
+
+> @risk-radar/types@1.0.0 build /Users/robiulawal/Projects/risk-radar/packages/types
+> tsc -p tsconfig.json
+

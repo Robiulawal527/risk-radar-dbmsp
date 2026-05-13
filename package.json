@@ -1,0 +1,33 @@
+{
+  "name": "risk-radar",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Risk Radar - Crime Analytics and Safety Platform",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "build:web": "pnpm --filter @risk-radar/web run build",
+    "start": "turbo run start",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "type-check": "turbo run type-check",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "db:push": "turbo run db:push",
+    "db:migrate": "turbo run db:migrate",
+    "db:seed": "turbo run db:seed",
+    "web": "turbo run dev --filter=@risk-radar/web",
+    "mobile": "turbo run dev --filter=@risk-radar/mobile",
+    "backend": "turbo run dev --filter=@risk-radar/backend",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.0.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.5.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.4"
+}
