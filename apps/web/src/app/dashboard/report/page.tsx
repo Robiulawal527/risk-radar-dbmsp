@@ -14,6 +14,11 @@ import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
+import {
+  nominatimReverseBangladesh,
+  nominatimSearchBangladesh,
+  type NominatimHit,
+} from '@/lib/nominatim-client';
 
 const CRIME_TYPES = Object.values(CrimeType) as CrimeType[];
 const SEVERITIES = Object.values(Severity) as Severity[];
@@ -40,22 +45,36 @@ export default function ReportPage() {
   const [description, setDescription] = useState('');
   const [type, setType] = useState<CrimeType>(CrimeType.THEFT);
   const [severity, setSeverity] = useState<Severity>(Severity.MEDIUM);
+  const [address, setAddress] = useState('');
   const [area, setArea] = useState('');
+  const [district, setDistrict] = useState('');
+  const [division, setDivision] = useState('');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [locLoading, setLocLoading] = useState(false);
+  const [placeLoading, setPlaceLoading] = useState(false);
   const [touched, setTouched] = useState(false);
 
   const titleOk = title.trim().length >= TITLE_MIN;
   const descOk = description.trim().length >= DESC_MIN;
   const areaOk = area.trim().length >= AREA_MIN;
 
-  const coordOk = latitude !== null && longitude !== null;
+  const coordOk =
+    latitude !== null && longitude !== null && Number.isFinite(latitude) && Number.isFinite(longitude);
   const showErrors = touched;
   const titleInvalid = showErrors && !titleOk;
   const descInvalid = showErrors && !descOk;
   const areaInvalid = showErrors && !areaOk;
+
+  const applyPlace = (place: NominatimHit) => {
+    setLatitude(place.lat);
+    setLongitude(place.lng);
+    setAddress(place.address || place.displayName || '');
+    if (place.area) setArea(place.area);
+    if (place.district) setDistrict(place.district);
+    if (place.division) setDivision(place.division);
+  };
 
   const useCurrentLocation = () => {
     if (!navigator.geolocation) {
@@ -64,13 +83,31 @@ export default function ReportPage() {
     }
     setLocLoading(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         setLatitude(pos.coords.latitude);
         setLongitude(pos.coords.longitude);
-        setLocLoading(false);
-        toast.success('GPS position saved', {
-          description: 'Add a readable area name if you have not already.',
-        });
+        try {
+          const place = await nominatimReverseBangladesh(pos.coords.latitude, pos.coords.longitude);
+          if (place) {
+            applyPlace(place);
+            toast.success('Location filled from GPS', {
+              description: 'Address, area, district, and division were added. You can edit them.',
+            });
+          } else {
+            toast.success('GPS position saved', {
+              description: 'Add the address details manually before submitting.',
+            });
+          }
+        } catch (err) {
+          toast.success('GPS position saved', {
+            description:
+              err instanceof Error
+                ? `Geocoder did not respond: ${err.message}`
+                : 'Add the address details manually before submitting.',
+          });
+        } finally {
+          setLocLoading(false);
+        }
       },
       () => {
         setLocLoading(false);
@@ -80,6 +117,36 @@ export default function ReportPage() {
       },
       { enableHighAccuracy: true, timeout: 12_000, maximumAge: 60_000 }
     );
+  };
+
+  const findTypedLocation = async () => {
+    const query = [address, area, district, division].filter(Boolean).join(', ');
+    if (query.trim().length < 2) {
+      toast.error('Type a place first', {
+        description: 'Enter an address, area, district, or division to locate it.',
+      });
+      return;
+    }
+
+    setPlaceLoading(true);
+    try {
+      const results = await nominatimSearchBangladesh(query);
+      const place = results[0];
+      if (!place) {
+        toast.error('No map match found', {
+          description: 'Try a nearby landmark or a more specific address.',
+        });
+        return;
+      }
+      applyPlace(place);
+      toast.success('Location matched', {
+        description: 'Coordinates and address fields were filled from the map result.',
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not find that location');
+    } finally {
+      setPlaceLoading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -121,7 +188,10 @@ export default function ReportPage() {
         location: {
           latitude,
           longitude,
+          address: address.trim() || undefined,
           area: area.trim(),
+          district: district.trim() || undefined,
+          division: division.trim() || undefined,
         },
         severity,
         reportedBy: user?.name?.trim() || user?.email || 'Community reporter',
@@ -138,7 +208,10 @@ export default function ReportPage() {
       setDescription('');
       setType(CrimeType.THEFT);
       setSeverity(Severity.MEDIUM);
+      setAddress('');
       setArea('');
+      setDistrict('');
+      setDivision('');
       setLatitude(null);
       setLongitude(null);
       setTouched(false);
@@ -280,25 +353,40 @@ export default function ReportPage() {
             </fieldset>
 
             <div className="space-y-2">
-              <label htmlFor="report-area" className="text-xs font-semibold tracking-wide text-slate-400">
-                Location / area
-              </label>
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Input
-                  id="report-area"
-                  name="area"
-                  autoComplete="street-address"
-                  placeholder="Neighborhood, landmark, or street — e.g. Dhanmondi 27"
-                  value={area}
-                  onChange={(e) => setArea(e.target.value)}
-                  className={cn('min-w-0 flex-1', areaInvalid && 'border-red-400/50 ring-1 ring-red-400/30')}
-                />
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="min-w-0 flex-1 space-y-2">
+                  <label htmlFor="report-address" className="text-xs font-semibold tracking-wide text-slate-400">
+                    Address or nearby landmark
+                  </label>
+                  <Input
+                    id="report-address"
+                    name="address"
+                    autoComplete="street-address"
+                    placeholder="e.g. House 12, Road 11, near Gulshan 1 Circle"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-12 shrink-0 border-white/15 bg-white/[0.03] hover:bg-white/10 sm:w-auto"
+                  onClick={findTypedLocation}
+                  disabled={placeLoading || locLoading}
+                >
+                  {placeLoading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+                  ) : (
+                    <MapPin className="mr-2 h-4 w-4" aria-hidden />
+                  )}
+                  Find on map
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
                   className="h-12 shrink-0 border-white/15 bg-white/[0.03] hover:bg-white/10 sm:w-auto"
                   onClick={useCurrentLocation}
-                  disabled={locLoading}
+                  disabled={locLoading || placeLoading}
                 >
                   {locLoading ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
@@ -308,14 +396,102 @@ export default function ReportPage() {
                   Use my location
                 </Button>
               </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-2">
+                  <label htmlFor="report-area" className="text-xs font-semibold tracking-wide text-slate-400">
+                    Area
+                  </label>
+                  <Input
+                    id="report-area"
+                    name="area"
+                    autoComplete="address-level3"
+                    placeholder="e.g. Gulshan"
+                    value={area}
+                    onChange={(e) => setArea(e.target.value)}
+                    className={cn(areaInvalid && 'border-red-400/50 ring-1 ring-red-400/30')}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="report-district" className="text-xs font-semibold tracking-wide text-slate-400">
+                    District
+                  </label>
+                  <Input
+                    id="report-district"
+                    name="district"
+                    autoComplete="address-level2"
+                    placeholder="e.g. Dhaka"
+                    value={district}
+                    onChange={(e) => setDistrict(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="report-division" className="text-xs font-semibold tracking-wide text-slate-400">
+                    Division
+                  </label>
+                  <Input
+                    id="report-division"
+                    name="division"
+                    autoComplete="address-level1"
+                    placeholder="e.g. Dhaka Division"
+                    value={division}
+                    onChange={(e) => setDivision(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <details className="rounded-2xl border border-white/10 bg-white/[0.025] p-4 text-sm text-slate-400">
+                <summary className="cursor-pointer select-none font-medium text-slate-300">
+                  Edit coordinates manually
+                </summary>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <label htmlFor="report-latitude" className="text-xs font-semibold tracking-wide text-slate-400">
+                      Latitude
+                    </label>
+                    <Input
+                      id="report-latitude"
+                      name="latitude"
+                      inputMode="decimal"
+                      placeholder="23.7806"
+                      value={latitude ?? ''}
+                      onChange={(e) => {
+                        const value = e.target.value.trim();
+                        setLatitude(value ? Number(value) : null);
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor="report-longitude" className="text-xs font-semibold tracking-wide text-slate-400">
+                      Longitude
+                    </label>
+                    <Input
+                      id="report-longitude"
+                      name="longitude"
+                      inputMode="decimal"
+                      placeholder="90.4193"
+                      value={longitude ?? ''}
+                      onChange={(e) => {
+                        const value = e.target.value.trim();
+                        setLongitude(value ? Number(value) : null);
+                      }}
+                    />
+                  </div>
+                </div>
+              </details>
+
               <p className="text-xs text-slate-500">
-                Add a readable place name, then use GPS so coordinates are saved for the map (~10 km² alert radius uses
-                this point when notifying others).
+                Use GPS for the fastest entry, or type a location and find it on the map. All saved location fields can
+                be corrected before submitting.
               </p>
               {coordOk ? (
-                <p className="text-xs text-emerald-400/90">GPS position attached.</p>
+                <p className="text-xs text-emerald-400/90">
+                  Coordinates attached: {latitude?.toFixed(5)}, {longitude?.toFixed(5)}.
+                </p>
               ) : touched ? (
-                <p className="text-xs text-rose-400/90">Tap “Use my location” to attach coordinates (required).</p>
+                <p className="text-xs text-rose-400/90">
+                  Tap “Use my location”, “Find on map”, or enter coordinates manually.
+                </p>
               ) : null}
             </div>
 

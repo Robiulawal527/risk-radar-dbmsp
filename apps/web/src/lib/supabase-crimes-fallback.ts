@@ -191,6 +191,26 @@ function omitUndefined(row: ReportRow): ReportRow {
 }
 
 function reportInsertAttempts(camel: ReportRow): ReportRow[] {
+  const crimesTable = omitUndefined({
+    user_id: camel.userId,
+    type: camel.type,
+    category: camel.category,
+    title: camel.title,
+    description: camel.description,
+    latitude: camel.latitude,
+    longitude: camel.longitude,
+    address: camel.address,
+    area: camel.area,
+    district: camel.district,
+    division: camel.division,
+    severity: camel.severity,
+    reported_by: camel.reportedBy,
+    status: camel.status,
+    date_time: camel.dateTime,
+    created_at: camel.createdAt,
+    updated_at: camel.updatedAt,
+  });
+
   const snake = omitUndefined({
     type: camel.type,
     category: camel.category,
@@ -232,13 +252,17 @@ function reportInsertAttempts(camel: ReportRow): ReportRow[] {
   });
 
   const minimal = omitUndefined({
+    user_id: camel.userId,
     type: camel.type,
     category: camel.category,
     title: camel.title,
     description: camel.description,
     latitude: camel.latitude,
     longitude: camel.longitude,
+    address: camel.address,
     area: camel.area,
+    district: camel.district,
+    division: camel.division,
     severity: camel.severity,
     status: camel.status,
     reported_by: camel.reportedBy,
@@ -268,7 +292,7 @@ function reportInsertAttempts(camel: ReportRow): ReportRow[] {
     updatedAt: camel.updatedAt,
   });
 
-  const attempts = [camel, snake, common, minimal, appSchemaWithoutUser];
+  const attempts = [crimesTable, camel, snake, common, minimal, appSchemaWithoutUser];
   const seen = new Set<string>();
   return attempts.filter((row) => {
     const key = JSON.stringify(Object.keys(row).sort());
