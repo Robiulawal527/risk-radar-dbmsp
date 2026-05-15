@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -34,6 +35,7 @@ const AREA_MIN = 3;
 
 export default function ReportPage() {
   const { user } = useAuthStore();
+  const queryClient = useQueryClient();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<CrimeType>(CrimeType.THEFT);
@@ -125,6 +127,10 @@ export default function ReportPage() {
         reportedBy: user?.name?.trim() || user?.email || 'Community reporter',
         dateTime: new Date().toISOString(),
       });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['stats'] }),
+        queryClient.invalidateQueries({ queryKey: ['map-crimes'] }),
+      ]);
       toast.success('Report submitted', {
         description: 'It is stored in the database. Nearby users with alerts enabled may be notified.',
       });
@@ -137,10 +143,11 @@ export default function ReportPage() {
       setLongitude(null);
       setTouched(false);
     } catch (err: unknown) {
-      const msg =
+      const responseError =
         err && typeof err === 'object' && 'response' in err
-          ? String((err as { response?: { data?: { error?: string } } }).response?.data?.error)
-          : 'Submit failed';
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
+          : undefined;
+      const msg = responseError || (err instanceof Error ? err.message : 'Submit failed');
       toast.error(msg || 'Submit failed');
     } finally {
       setSubmitting(false);

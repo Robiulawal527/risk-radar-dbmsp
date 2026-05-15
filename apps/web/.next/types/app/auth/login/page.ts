@@ -1,4 +1,4 @@
-// File: /Users/robiulawal/Projects/risk-radar/apps/web/src/app/auth/login/page.tsx
+// File: /Users/robiulawal/UIU/risk-radar-dbmsp/apps/web/src/app/auth/login/page.tsx
 import * as entry from '../../../../../src/app/auth/login/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
