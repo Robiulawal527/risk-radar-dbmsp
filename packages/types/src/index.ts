@@ -60,6 +60,7 @@ export interface User {
   alertsEnabled?: boolean | null;
   createdAt?: Date;
   updatedAt?: Date;
+  skills?: string[];
 }
 
 export interface LoginCredentials {

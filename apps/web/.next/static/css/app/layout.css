@@ -1949,9 +1949,9 @@ body{
   margin-left: auto;
   margin-right: auto;
 }
-.my-6{
-  margin-top: 1.5rem;
-  margin-bottom: 1.5rem;
+.my-4{
+  margin-top: 1rem;
+  margin-bottom: 1rem;
 }
 .-mt-0\.5{
   margin-top: -0.125rem;
@@ -2282,9 +2282,6 @@ body{
 }
 .grid-cols-2{
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.grid-cols-3{
-  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .flex-col{
   flex-direction: column;
@@ -3094,10 +3091,6 @@ body{
   --tw-text-opacity: 1;
   color: rgb(221 214 254 / var(--tw-text-opacity, 1));
 }
-.text-violet-300{
-  --tw-text-opacity: 1;
-  color: rgb(196 181 253 / var(--tw-text-opacity, 1));
-}
 .text-white{
   --tw-text-opacity: 1;
   color: rgb(255 255 255 / var(--tw-text-opacity, 1));
@@ -3109,6 +3102,9 @@ body{
 .text-zinc-400{
   --tw-text-opacity: 1;
   color: rgb(161 161 170 / var(--tw-text-opacity, 1));
+}
+.underline{
+  text-decoration-line: underline;
 }
 .underline-offset-4{
   text-underline-offset: 4px;

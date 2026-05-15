@@ -1,0 +1,2 @@
+-- Migration: Add skills field to User table
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS skills TEXT[];

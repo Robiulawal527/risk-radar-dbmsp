@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS "User" (
   password TEXT NOT NULL,
   name TEXT NOT NULL,
   phone TEXT,
+  skills TEXT[],
   avatar TEXT,
   role TEXT DEFAULT 'USER',
   "alertLatitude" DOUBLE PRECISION,

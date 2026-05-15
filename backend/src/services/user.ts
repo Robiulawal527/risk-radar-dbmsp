@@ -1,3 +1,11 @@
+// Search users by skill (case-insensitive)
+export async function searchUsersBySkill(skill: string): Promise<User[]> {
+  const rows = await query<UserRow>(
+    `SELECT * FROM "User" WHERE skills && ARRAY[$1]::text[]`,
+    [skill]
+  );
+  return rows.map(toUser);
+}
 import * as bcrypt from 'bcryptjs';
 import { query, queryOne } from '@risk-radar/database';
 import type { User } from '@risk-radar/types';
@@ -16,6 +24,7 @@ type UserRow = {
   alertsEnabled: boolean | null;
   createdAt: Date;
   updatedAt: Date;
+  skills: string[] | null;
 };
 
 function toUser(row: UserRow): User {
@@ -32,6 +41,7 @@ export async function updateProfile(
     alertLatitude?: number | null;
     alertLongitude?: number | null;
     alertsEnabled?: boolean;
+    skills?: string[];
   }
 ): Promise<User> {
   const sets: string[] = ['"updatedAt" = NOW()'];
@@ -61,6 +71,10 @@ export async function updateProfile(
   if (data.alertsEnabled !== undefined) {
     sets.push(`"alertsEnabled" = $${i++}`);
     values.push(data.alertsEnabled);
+  }
+  if (data.skills !== undefined) {
+    sets.push(`skills = $${i++}`);
+    values.push(data.skills);
   }
 
   values.push(userId);

@@ -13,6 +13,8 @@ import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 export default function SettingsPage() {
   const { user, logout, patchUser } = useAuthStore();
   const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [skills, setSkills] = useState<string>('');
   const [alertsEnabled, setAlertsEnabled] = useState(true);
   const [saving, setSaving] = useState(false);
   const [gpsLoading, setGpsLoading] = useState(false);
@@ -20,6 +22,8 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!user) return;
     setName(user.name);
+    setPhone(user.phone || '');
+    setSkills((user.skills || []).join(', '));
     setAlertsEnabled(user.alertsEnabled !== false);
   }, [user]);
 
@@ -27,14 +31,21 @@ export default function SettingsPage() {
     if (!user) return;
     setSaving(true);
     try {
+      const skillsArr = skills
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
       const res = await api.put<{ success: boolean; data: Record<string, unknown> }>('/users/profile', {
         name: name.trim(),
+        phone: phone.trim(),
+        skills: skillsArr,
         alertsEnabled,
       });
       const d = res.data.data;
       patchUser({
         name: String(d.name ?? name),
         phone: d.phone != null ? String(d.phone) : undefined,
+        skills: Array.isArray(d.skills) ? d.skills : skillsArr,
         avatar: d.avatar != null ? String(d.avatar) : undefined,
         alertLatitude: typeof d.alertLatitude === 'number' ? d.alertLatitude : null,
         alertLongitude: typeof d.alertLongitude === 'number' ? d.alertLongitude : null,
@@ -114,6 +125,15 @@ export default function SettingsPage() {
           <div>
             <label className="text-xs text-slate-400">EMAIL</label>
             <Input value={user?.email ?? ''} className="mt-1.5" disabled />
+          </div>
+          <div>
+            <label className="text-xs text-slate-400">PHONE NUMBER</label>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} className="mt-1.5" placeholder="e.g. +1234567890" />
+          </div>
+          <div>
+            <label className="text-xs text-slate-400">SKILLS</label>
+            <Input value={skills} onChange={(e) => setSkills(e.target.value)} className="mt-1.5" placeholder="e.g. doctor, engineer, web developer" />
+            <span className="text-xs text-slate-500">Comma-separated (e.g. doctor, engineer, web developer)</span>
           </div>
           <label className="flex cursor-pointer items-center gap-3 text-sm text-slate-300">
             <input

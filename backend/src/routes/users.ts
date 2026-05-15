@@ -1,3 +1,16 @@
+// Search users by skill
+usersRouter.get(
+  '/search',
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const { skill } = req.query;
+    if (!skill || typeof skill !== 'string') {
+      return res.status(400).json({ success: false, message: 'Skill query required' });
+    }
+    // Find users with the skill (case-insensitive)
+    const rows = await userService.searchUsersBySkill(skill);
+    res.json({ success: true, data: rows });
+  })
+);
 import { Router } from 'express';
 import type { IRouter } from 'express-serve-static-core';
 import * as userService from '../services/user.js';
