@@ -96,7 +96,13 @@ async function validateSupabaseToken(accessToken) {
         throw new http_error_js_1.HttpError(401, 'Invalid Supabase token');
     }
     const supabaseUser = data.user;
-    const profile = await (0, database_1.queryOne)('SELECT full_name, phone, avatar, role FROM public.profiles WHERE id = $1', [supabaseUser.id]);
+    let profile = null;
+    try {
+        profile = await (0, database_1.queryOne)('SELECT full_name, phone, avatar, role FROM public.profiles WHERE id = $1', [supabaseUser.id]);
+    }
+    catch {
+        // Missing table, wrong name, or DB mismatch — still create/sync local User from Supabase + metadata.
+    }
     let localUser = await (0, database_1.queryOne)('SELECT * FROM "User" WHERE email = $1', [
         supabaseUser.email,
     ]);

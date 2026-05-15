@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Search, Heart, Star, ShieldCheck } from 'lucide-react';
+import { Search, Heart, Star, ShieldCheck, Phone, Mail, Award, CheckCircle2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { api } from '@/lib/api';
 import type { SocialRadarMatch } from '@/lib/types';
@@ -68,34 +68,63 @@ export default function SocialRadarPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.05 }}
           >
-            <Card className="glass-card flex h-full flex-col">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-teal-600 text-2xl font-bold ring-1 ring-white/10">
-                    {(user.name || user.email || '?')[0]}
+            <Card className="glass-card overflow-hidden transition-all hover:border-teal-500/30 hover:shadow-[0_0_20px_rgba(20,184,166,0.1)] flex h-full flex-col relative group">
+              <div className="absolute top-0 right-0 p-4 opacity-10 transition-opacity group-hover:opacity-20 pointer-events-none">
+                <Award className="h-24 w-24" />
+              </div>
+              <div className="flex flex-col h-full z-10 p-1">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-teal-500 text-2xl font-bold text-white shadow-lg ring-1 ring-white/20">
+                    {(user.name || user.email || '?')[0].toUpperCase()}
                   </div>
-                  <div>
-                    <div className="text-xl font-bold">{user.name}</div>
-                    <div className="text-sm text-slate-400">{user.email}</div>
-                    {user.phone && (
-                      <div className="text-xs text-slate-400 mt-1">
-                        <a href={`tel:${user.phone}`} className="text-teal-400 underline">Call</a>
-                        <span className="ml-2">{user.phone}</span>
-                      </div>
+                  <div className="flex-1 overflow-hidden">
+                    <h3 className="text-xl font-bold truncate tracking-tight text-white">{user.name}</h3>
+                    <p className="text-sm text-slate-300 truncate">{user.email}</p>
+                    
+                    <div className="mt-2 flex items-center gap-1 text-xs font-medium text-teal-400">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      <span>Verified Profile</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex-1">
+                  <p className="text-xs font-semibold tracking-widest text-slate-500 mb-3 uppercase">Expertise & Skills</p>
+                  <div className="flex flex-wrap gap-2">
+                    {Array.isArray(user.skills) && user.skills.length > 0 ? (
+                      user.skills.map((skill: string) => (
+                        <Badge key={skill} variant="secondary" className="bg-white/5 hover:bg-white/10 text-teal-100 border-white/10 px-2.5 py-1">
+                          {skill}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-xs text-slate-500 italic">No skills listed</span>
                     )}
                   </div>
                 </div>
-              </div>
-              <div className="my-4 flex flex-wrap gap-2">
-                {Array.isArray(user.skills) && user.skills.length > 0 ? (
-                  user.skills.map((skill: string) => (
-                    <Badge key={skill} variant="secondary" className="text-xs">
-                      {skill}
-                    </Badge>
-                  ))
-                ) : (
-                  <span className="text-xs text-slate-500">No skills listed</span>
-                )}
+
+                <div className="mt-6 flex gap-3 pt-4 border-t border-white/5">
+                  {user.phone ? (
+                     <Button variant="default" className="flex-1 bg-teal-500 hover:bg-teal-600 text-white font-medium shadow-[0_0_15px_rgba(20,184,166,0.2)] hover:shadow-[0_0_20px_rgba(20,184,166,0.4)] transition-all" asChild>
+                       <a href={`tel:${user.phone}`}>
+                         <Phone className="mr-2 h-4 w-4" />
+                         Call
+                       </a>
+                     </Button>
+                  ) : (
+                     <Button variant="secondary" className="flex-1 bg-white/5 text-slate-400 pointer-events-none opacity-50">
+                       <Phone className="mr-2 h-4 w-4" />
+                       No Phone
+                     </Button>
+                  )}
+                  
+                  <Button variant="outline" className="flex-1 border-white/10 hover:bg-white/5" asChild>
+                    <a href={`mailto:${user.email}`}>
+                      <Mail className="mr-2 h-4 w-4" />
+                      Email
+                    </a>
+                  </Button>
+                </div>
               </div>
             </Card>
           </motion.div>

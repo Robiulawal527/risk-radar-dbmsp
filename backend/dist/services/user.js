@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.updateProfile = updateProfile;
 exports.changePassword = changePassword;
+exports.searchUsersBySkill = searchUsersBySkill;
 const bcrypt = __importStar(require("bcryptjs"));
 const database_1 = require("@risk-radar/database");
 const http_error_js_1 = require("../lib/http-error.js");
@@ -70,6 +71,10 @@ async function updateProfile(userId, data) {
         sets.push(`"alertsEnabled" = $${i++}`);
         values.push(data.alertsEnabled);
     }
+    if (data.skills !== undefined) {
+        sets.push(`skills = $${i++}`);
+        values.push(data.skills);
+    }
     values.push(userId);
     const row = await (0, database_1.queryOne)(`UPDATE "User" SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, values);
     if (!row)
@@ -93,5 +98,10 @@ async function changePassword(userId, currentPassword, newPassword) {
         userId,
         hashedPassword,
     ]);
+}
+// Search users by skill (case-insensitive)
+async function searchUsersBySkill(skill) {
+    const rows = await (0, database_1.query)(`SELECT * FROM "User" WHERE skills && ARRAY[$1]::text[]`, [skill]);
+    return rows.map(toUser);
 }
 //# sourceMappingURL=user.js.map

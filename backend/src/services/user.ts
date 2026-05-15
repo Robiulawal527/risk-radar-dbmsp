@@ -1,11 +1,4 @@
-// Search users by skill (case-insensitive)
-export async function searchUsersBySkill(skill: string): Promise<User[]> {
-  const rows = await query<UserRow>(
-    `SELECT * FROM "User" WHERE skills && ARRAY[$1]::text[]`,
-    [skill]
-  );
-  return rows.map(toUser);
-}
+
 import * as bcrypt from 'bcryptjs';
 import { query, queryOne } from '@risk-radar/database';
 import type { User } from '@risk-radar/types';
@@ -112,4 +105,17 @@ export async function changePassword(
     userId,
     hashedPassword,
   ]);
+}
+
+// Search users by skill (case-insensitive)
+export async function searchUsersBySkill(skill: string): Promise<User[]> {
+  const rows = await query<UserRow>(
+    `SELECT * FROM "User" 
+     WHERE EXISTS (
+       SELECT 1 FROM unnest(skills) AS s
+       WHERE s ILIKE '%' || $1 || '%'
+     )`,
+    [skill]
+  );
+  return rows.map(toUser);
 }

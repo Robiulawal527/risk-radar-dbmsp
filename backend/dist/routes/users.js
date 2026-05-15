@@ -52,4 +52,14 @@ exports.usersRouter.put('/password', (0, async_handler_js_1.asyncHandler)(async 
     await userService.changePassword(req.user.id, currentPassword, newPassword);
     res.json({ success: true });
 }));
+// Search users by skill
+exports.usersRouter.get('/search', (0, async_handler_js_1.asyncHandler)(async (req, res) => {
+    const { skill } = req.query;
+    if (!skill || typeof skill !== 'string') {
+        return res.status(400).json({ success: false, message: 'Skill query required' });
+    }
+    // Find users with the skill (case-insensitive)
+    const rows = await userService.searchUsersBySkill(skill);
+    res.json({ success: true, data: rows });
+}));
 //# sourceMappingURL=users.js.map
