@@ -9,7 +9,9 @@ export interface AuthState {
   refreshToken: string | null;
   isAuthenticated: boolean;
   setAuth: (user: User, accessToken: string, refreshToken: string) => Promise<void>;
+  patchUser: (partial: Partial<User>) => void;
   clearAuth: () => Promise<void>;
+  logout: () => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -27,6 +29,10 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: true,
         });
       },
+      patchUser: (partial) =>
+        set((s) => ({
+          user: s.user ? { ...s.user, ...partial } : null,
+        })),
       clearAuth: async () => {
         set({
           user: null,
@@ -35,6 +41,13 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
         });
       },
+      logout: () =>
+        set({
+          user: null,
+          accessToken: null,
+          refreshToken: null,
+          isAuthenticated: false,
+        }),
     }),
     {
       name: 'risk-radar-mobile-auth',

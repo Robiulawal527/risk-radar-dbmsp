@@ -22,6 +22,31 @@ interface Stat {
   trends: Array<{ date: string; count: number }>;
 }
 
+function crimesFromApiPayload(payload: unknown): Record<string, any>[] {
+  if (Array.isArray(payload)) return payload as Record<string, any>[];
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    'items' in payload &&
+    Array.isArray((payload as { items: unknown }).items)
+  ) {
+    return (payload as { items: Record<string, any>[] }).items;
+  }
+  return [];
+}
+
+function formatTimeAgo(value?: string | Date) {
+  if (!value) return 'recently';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'recently';
+  const diffMinutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
+  if (diffMinutes < 1) return 'now';
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const hours = Math.round(diffMinutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
 export default function HomeScreen() {
   const { user } = useAuthStore();
   const [refreshing, setRefreshing] = React.useState(false);
@@ -34,9 +59,17 @@ export default function HomeScreen() {
     },
   });
 
+  const { data: recentCrimes = [], refetch: refetchCrimes } = useQuery({
+    queryKey: ['recent-crimes-home'],
+    queryFn: async () => {
+      const response = await api.get('/crimes?limit=8');
+      return crimesFromApiPayload(response.data?.data);
+    },
+  });
+
   const onRefresh = async () => {
     setRefreshing(true);
-    await refetch();
+    await Promise.all([refetch(), refetchCrimes()]);
     setRefreshing(false);
   };
 
@@ -92,11 +125,18 @@ export default function HomeScreen() {
     },
   ];
 
-  const recentIncidents = [
-    { id: 1, type: 'Theft', area: 'Gulshan', time: '14m ago', severity: 'MEDIUM' },
-    { id: 2, type: 'Assault', area: 'Mirpur', time: '47m ago', severity: 'HIGH' },
-    { id: 3, type: 'Fraud', area: 'Dhanmondi', time: '2h ago', severity: 'LOW' },
-  ];
+  const todaysCount =
+    stats?.trends?.find((row) => row.date === new Date().toISOString().slice(0, 10))?.count ??
+    stats?.trends?.at(-1)?.count ??
+    0;
+  const hotspot = stats?.crimesByArea?.[0];
+  const recentIncidents = recentCrimes.slice(0, 6).map((crime) => ({
+    id: String(crime.id),
+    type: String(crime.type ?? crime.category ?? 'Incident').replace(/_/g, ' '),
+    area: String(crime.location?.area ?? crime.location?.district ?? 'Unknown area'),
+    time: formatTimeAgo(crime.createdAt ?? crime.dateTime),
+    severity: String(crime.severity ?? 'LOW'),
+  }));
 
   return (
     <View style={styles.screen}>
@@ -104,7 +144,7 @@ export default function HomeScreen() {
       <View style={styles.statusBar}>
         <View style={styles.statusLeft}>
           <View style={styles.liveDot} />
-          <Text style={styles.statusText}>LIVE • 1,284 reports today</Text>
+          <Text style={styles.statusText}>LIVE • {todaysCount.toLocaleString()} reports today</Text>
         </View>
         <TouchableOpacity style={styles.avatar}>
           <Text style={styles.avatarText}>{user?.name?.[0] || 'U'}</Text>
@@ -128,7 +168,7 @@ export default function HomeScreen() {
         <View style={styles.hero}>
           <View>
             <Text style={styles.greeting}>Good evening, {user?.name?.split(' ')[0] || 'Champion'}</Text>
-            <Text style={styles.location}>📍 Dhaka, Bangladesh • 28°C</Text>
+            <Text style={styles.location}>Dhaka, Bangladesh • Live community data</Text>
           </View>
           
           {/* Safety Score */}
@@ -147,11 +187,11 @@ export default function HomeScreen() {
         {/* Live Stats */}
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>{stats?.totalCrimes?.toLocaleString() || '1,284'}</Text>
+            <Text style={styles.statValue}>{stats?.totalCrimes?.toLocaleString() || '0'}</Text>
             <Text style={styles.statLabel}>Total Reports</Text>
             <View style={styles.statChange}>
-              <MaterialIcons name="trending-down" size={12} color={COLORS.success} />
-              <Text style={styles.changeText}>-14% from last week</Text>
+              <MaterialIcons name="storage" size={12} color={COLORS.success} />
+              <Text style={styles.changeText}>Database records</Text>
             </View>
           </View>
           
@@ -160,7 +200,7 @@ export default function HomeScreen() {
             <Text style={styles.statLabel}>High-Risk Zones</Text>
             <View style={styles.statChange}>
               <MaterialIcons name="warning" size={12} color={COLORS.warning} />
-              <Text style={styles.changeText}>3 new today</Text>
+              <Text style={styles.changeText}>HIGH / CRITICAL</Text>
             </View>
           </View>
         </View>
@@ -219,9 +259,11 @@ export default function HomeScreen() {
           <View style={styles.insightContent}>
             <Text style={styles.insightTitle}>Safety Insight</Text>
             <Text style={styles.insightText}>
-              Avoid Gulshan &amp; Mirpur after 10 PM. 68% of incidents reported in last 48h occurred in these zones.
+              {hotspot
+                ? `${hotspot.area} is currently the highest-volume area with ${hotspot.count} reports and ${hotspot.riskLevel} risk.`
+                : 'No hotspot data yet. Reports you submit will help build the live safety picture.'}
             </Text>
-            <TouchableOpacity style={styles.insightAction}>
+            <TouchableOpacity style={styles.insightAction} onPress={() => router.push('/(tabs)/map' as never)}>
               <Text style={styles.insightActionText}>View Heatmap</Text>
             </TouchableOpacity>
           </View>

@@ -53,6 +53,23 @@ export interface User {
     alertsEnabled?: boolean | null;
     createdAt?: Date;
     updatedAt?: Date;
+    skills?: string[];
+}
+export interface SocialRadarMatch {
+    userId: string;
+    id?: string;
+    name: string;
+    email: string;
+    phone?: string | null;
+    avatar?: string | null;
+    interests: string[];
+    skills: string[];
+    crimeScore: number;
+    goodWorkScore: number;
+    trustScore: number;
+    compatibilityScore: number;
+    totalCrimeRecords: number;
+    totalGoodWorkRecords: number;
 }
 export interface LoginCredentials {
     email: string;
@@ -67,6 +84,7 @@ export interface SignupData {
 export interface Location {
     latitude: number;
     longitude: number;
+    accuracy?: number | null;
     address?: string;
     area?: string;
     district?: string;

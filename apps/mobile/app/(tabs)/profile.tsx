@@ -1,175 +1,235 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { router } from 'expo-router';
-import { useAuthStore } from '@/store/auth';
-import { supabase } from '@/lib/supabase';
+import * as Location from 'expo-location';
 import { MaterialIcons } from '@expo/vector-icons';
+import { api } from '@/lib/api';
+import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/auth';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../constants/theme';
+
+function parseSkills(value: string): string[] {
+  return value
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err && typeof err === 'object' && 'response' in err) {
+    const data = (err as { response?: { data?: { error?: unknown; message?: unknown } } }).response?.data;
+    const apiMessage = data?.error ?? data?.message;
+    if (typeof apiMessage === 'string' && apiMessage.trim()) return apiMessage;
+  }
+  if (err instanceof Error && err.message.trim()) return err.message;
+  return fallback;
+}
 
 export default function ProfileScreen() {
-  const { user, clearAuth } = useAuthStore();
+  const { user, clearAuth, patchUser } = useAuthStore();
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [skills, setSkills] = useState('');
+  const [alertsEnabled, setAlertsEnabled] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [gpsLoading, setGpsLoading] = useState(false);
 
-  const onLogout = async () => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: async () => {
-            await supabase.auth.signOut();
-            await clearAuth();
-            router.replace('/auth/login' as never);
-          },
+  useEffect(() => {
+    if (!user) return;
+    setName(user.name || '');
+    setPhone(user.phone || '');
+    setSkills((user.skills || []).join(', '));
+    setAlertsEnabled(user.alertsEnabled !== false);
+  }, [user]);
+
+  const saveProfile = async () => {
+    if (!user) return;
+    setSaving(true);
+    const skillsArr = parseSkills(skills);
+    try {
+      const response = await api.put<{ success: boolean; data: Record<string, unknown> }>('/users/profile', {
+        name: name.trim(),
+        phone: phone.trim(),
+        skills: skillsArr,
+        alertsEnabled,
+      });
+      const data = response.data.data ?? {};
+      patchUser({
+        name: String(data.name ?? name.trim()),
+        phone: data.phone != null ? String(data.phone) : phone.trim(),
+        skills: Array.isArray(data.skills) ? (data.skills as string[]) : skillsArr,
+        avatar: data.avatar != null ? String(data.avatar) : user.avatar,
+        alertLatitude: typeof data.alertLatitude === 'number' ? data.alertLatitude : user.alertLatitude ?? null,
+        alertLongitude: typeof data.alertLongitude === 'number' ? data.alertLongitude : user.alertLongitude ?? null,
+        alertsEnabled: typeof data.alertsEnabled === 'boolean' ? data.alertsEnabled : alertsEnabled,
+      });
+      Alert.alert('Profile saved', 'Your profile and alert preferences were updated.');
+    } catch (err) {
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          name: name.trim(),
+          phone: phone.trim(),
+          skills: skillsArr,
+          alertsEnabled,
         },
-      ]
-    );
+      });
+      if (!error) {
+        patchUser({ name: name.trim(), phone: phone.trim(), skills: skillsArr, alertsEnabled });
+        Alert.alert('Profile saved', 'Saved through your Supabase user metadata.');
+      } else {
+        Alert.alert('Could not save profile', getErrorMessage(err, error.message || 'Could not save profile.'));
+      }
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const menuItems = [
-    { icon: 'person', label: 'Edit Profile', onPress: () => Alert.alert('Coming Soon', 'Profile editing will be available in next update.') },
-    { icon: 'notifications', label: 'Notifications', onPress: () => {} },
-    { icon: 'security', label: 'Privacy & Safety', onPress: () => {} },
-    { icon: 'help', label: 'Help & Support', onPress: () => {} },
-    { icon: 'info', label: 'About Risk Radar', onPress: () => Alert.alert('Risk Radar v2.0', 'See the risk. Avoid danger. Make meaningful connections.') },
-  ];
+  const saveAlertZoneFromGps = async () => {
+    try {
+      setGpsLoading(true);
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission required', 'Allow location access to save an alert zone.');
+        return;
+      }
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      try {
+        const response = await api.put<{ success: boolean; data: Record<string, unknown> }>('/users/profile', {
+          alertLatitude: lat,
+          alertLongitude: lng,
+          alertsEnabled: true,
+        });
+        const data = response.data.data ?? {};
+        patchUser({
+          alertLatitude: typeof data.alertLatitude === 'number' ? data.alertLatitude : lat,
+          alertLongitude: typeof data.alertLongitude === 'number' ? data.alertLongitude : lng,
+          alertsEnabled: true,
+        });
+        setAlertsEnabled(true);
+        Alert.alert('Nearby alerts enabled', 'New incidents near this point can create in-app notifications.');
+      } catch (err) {
+        const { error } = await supabase.auth.updateUser({
+          data: { alertLatitude: lat, alertLongitude: lng, alertsEnabled: true },
+        });
+        if (!error) {
+          patchUser({ alertLatitude: lat, alertLongitude: lng, alertsEnabled: true });
+          setAlertsEnabled(true);
+          Alert.alert('Nearby alerts enabled', 'Saved through your Supabase user metadata.');
+        } else {
+          Alert.alert('Could not update alert zone', getErrorMessage(err, error.message || 'Could not update alert zone.'));
+        }
+      }
+    } catch {
+      Alert.alert('Could not read GPS', 'Allow location access and try again.');
+    } finally {
+      setGpsLoading(false);
+    }
+  };
+
+  const onLogout = async () => {
+    Alert.alert('Sign out', 'End this mobile session?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: async () => {
+          await supabase.auth.signOut().catch(() => {});
+          await clearAuth();
+          router.replace('/auth/login' as never);
+        },
+      },
+    ]);
+  };
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={styles.header}>
         <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{user?.name?.[0] || 'U'}</Text>
+          <Text style={styles.avatarText}>{(user?.name || user?.email || 'U')[0].toUpperCase()}</Text>
         </View>
         <Text style={styles.name}>{user?.name || 'Safety Champion'}</Text>
         <Text style={styles.email}>{user?.email}</Text>
-        
-        <View style={styles.statsRow}>
-          <View style={styles.stat}>
-            <Text style={styles.statValue}>47</Text>
-            <Text style={styles.statLabel}>Reports</Text>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Profile</Text>
+        <Text style={styles.label}>FULL NAME</Text>
+        <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Full name" placeholderTextColor={COLORS.textMuted} />
+        <Text style={styles.label}>EMAIL</Text>
+        <TextInput style={[styles.input, styles.disabledInput]} value={user?.email ?? ''} editable={false} />
+        <Text style={styles.label}>PHONE NUMBER</Text>
+        <TextInput style={styles.input} value={phone} onChangeText={setPhone} placeholder="+880..." placeholderTextColor={COLORS.textMuted} keyboardType="phone-pad" />
+        <Text style={styles.label}>SKILLS</Text>
+        <TextInput style={styles.input} value={skills} onChangeText={setSkills} placeholder="doctor, engineer, volunteer" placeholderTextColor={COLORS.textMuted} />
+        <Text style={styles.helpText}>Comma-separated skills power Social Radar search.</Text>
+        <View style={styles.switchRow}>
+          <View style={styles.switchTextWrap}>
+            <Text style={styles.switchTitle}>Nearby incident notifications</Text>
+            <Text style={styles.helpText}>Use the saved alert point for local crime alerts.</Text>
           </View>
-          <View style={styles.stat}>
-            <Text style={styles.statValue}>92</Text>
-            <Text style={styles.statLabel}>Trust Score</Text>
-          </View>
-          <View style={styles.stat}>
-            <Text style={styles.statValue}>Level 8</Text>
-            <Text style={styles.statLabel}>Safety Hero</Text>
-          </View>
+          <Switch value={alertsEnabled} onValueChange={setAlertsEnabled} trackColor={{ false: '#334155', true: COLORS.accentDark }} thumbColor={alertsEnabled ? COLORS.accent : COLORS.textMuted} />
         </View>
+        <TouchableOpacity style={[styles.primaryButton, saving && styles.buttonDisabled]} onPress={saveProfile} disabled={saving}>
+          <Text style={styles.primaryButtonText}>{saving ? 'Saving...' : 'Save changes'}</Text>
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.menu}>
-        {menuItems.map((item, index) => (
-          <TouchableOpacity key={index} style={styles.menuItem} onPress={item.onPress}>
-            <MaterialIcons name={item.icon as any} size={22} color="#64748b" />
-            <Text style={styles.menuText}>{item.label}</Text>
-            <MaterialIcons name="chevron-right" size={20} color="#475569" />
-          </TouchableOpacity>
-        ))}
+      <View style={styles.card}>
+        <View style={styles.cardTitleRow}>
+          <MaterialIcons name="location-on" size={20} color={COLORS.accent} />
+          <Text style={styles.cardTitle}>Alert Location</Text>
+        </View>
+        <Text style={styles.helpText}>Save home, work, or another point you care about. New nearby reports can trigger alerts.</Text>
+        {user?.alertLatitude != null && user?.alertLongitude != null ? (
+          <Text style={styles.savedLocation}>Saved: {user.alertLatitude.toFixed(4)}, {user.alertLongitude.toFixed(4)}</Text>
+        ) : (
+          <Text style={styles.savedLocation}>No alert point saved yet.</Text>
+        )}
+        <TouchableOpacity style={[styles.outlineButton, gpsLoading && styles.buttonDisabled]} onPress={saveAlertZoneFromGps} disabled={gpsLoading}>
+          <MaterialIcons name="my-location" size={18} color={COLORS.accent} />
+          <Text style={styles.outlineButtonText}>{gpsLoading ? 'Reading GPS...' : 'Use current location as alert zone'}</Text>
+        </TouchableOpacity>
       </View>
 
-      <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
-        <MaterialIcons name="logout" size={18} color="#ef4444" />
-        <Text style={styles.logoutText}>Sign Out</Text>
-      </TouchableOpacity>
-
-      <Text style={styles.version}>Risk Radar v2.0 • Made with ❤️ for safer Bangladesh</Text>
-    </View>
+      <View style={[styles.card, styles.dangerCard]}>
+        <Text style={[styles.cardTitle, { color: COLORS.danger }]}>Sign out</Text>
+        <Text style={styles.helpText}>Ends this session on the mobile app.</Text>
+        <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
+          <MaterialIcons name="logout" size={18} color="#fff" />
+          <Text style={styles.logoutText}>Sign Out</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#020617',
-    paddingTop: 60,
-  },
-  header: {
-    alignItems: 'center',
-    paddingBottom: 32,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e2937',
-  },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#22d3ee',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  avatarText: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#020617',
-  },
-  name: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  email: {
-    color: '#64748b',
-    marginTop: 4,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    marginTop: 20,
-    gap: 32,
-  },
-  stat: {
-    alignItems: 'center',
-  },
-  statValue: {
-    color: '#22d3ee',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  statLabel: {
-    color: '#64748b',
-    fontSize: 11,
-    marginTop: 2,
-  },
-  menu: {
-    marginTop: 16,
-    paddingHorizontal: 16,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e2937',
-    gap: 14,
-  },
-  menuText: {
-    flex: 1,
-    color: '#cbd5e1',
-    fontSize: 15,
-  },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 32,
-    paddingVertical: 14,
-    marginHorizontal: 16,
-    backgroundColor: '#1f2937',
-    borderRadius: 12,
-  },
-  logoutText: {
-    color: '#ef4444',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  version: {
-    textAlign: 'center',
-    color: '#475569',
-    fontSize: 11,
-    marginTop: 24,
-  },
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  content: { padding: SPACING.lg, paddingTop: 54, paddingBottom: 120 },
+  header: { alignItems: 'center', marginBottom: SPACING.lg },
+  avatar: { width: 84, height: 84, borderRadius: 42, backgroundColor: COLORS.accent, justifyContent: 'center', alignItems: 'center', marginBottom: SPACING.md, ...SHADOWS.glow },
+  avatarText: { fontSize: 34, fontWeight: '900', color: COLORS.bg },
+  name: { ...TYPOGRAPHY.h2, color: COLORS.text },
+  email: { color: COLORS.textMuted, marginTop: 4 },
+  card: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md, ...SHADOWS.card },
+  dangerCard: { borderColor: 'rgba(255,46,99,0.28)' },
+  cardTitle: { ...TYPOGRAPHY.h3, color: COLORS.text, marginBottom: SPACING.md },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  label: { color: COLORS.textMuted, fontSize: 11, fontWeight: '900', marginBottom: 6, marginTop: SPACING.sm },
+  input: { minHeight: 48, backgroundColor: '#111827', borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: RADIUS.sm, color: COLORS.text, paddingHorizontal: SPACING.md, fontSize: 15 },
+  disabledInput: { opacity: 0.62 },
+  helpText: { color: COLORS.textMuted, fontSize: 12, lineHeight: 18 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACING.md, marginTop: SPACING.md },
+  switchTextWrap: { flex: 1 },
+  switchTitle: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
+  primaryButton: { backgroundColor: COLORS.accent, borderRadius: RADIUS.sm, paddingVertical: 15, alignItems: 'center', marginTop: SPACING.lg },
+  primaryButtonText: { color: COLORS.bg, fontWeight: '900', fontSize: 15 },
+  outlineButton: { borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: RADIUS.sm, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
+  outlineButtonText: { color: COLORS.text, fontWeight: '800', textAlign: 'center' },
+  buttonDisabled: { opacity: 0.6 },
+  savedLocation: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.md },
+  logoutButton: { backgroundColor: COLORS.danger, borderRadius: RADIUS.sm, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
+  logoutText: { color: '#fff', fontSize: 15, fontWeight: '900' },
 });

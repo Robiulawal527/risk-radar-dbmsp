@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput, ScrollView } from 'react-native';
 import MapView, { Marker, Heatmap, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -40,6 +40,7 @@ function heatmapFromApiPayload(payload: unknown): Record<string, unknown>[] {
 }
 
 export default function MapScreen() {
+  const mapRef = useRef<MapView | null>(null);
   const [userLocation, setUserLocation] = useState({
     latitude: 23.8103,
     longitude: 90.4125,
@@ -48,6 +49,7 @@ export default function MapScreen() {
   });
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedArea, setSelectedArea] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('ALL');
 
   const { data: heatmapData } = useQuery({
@@ -73,39 +75,54 @@ export default function MapScreen() {
       weight: Number(point.intensity ?? 0.7),
     })) ?? [];
 
-  const crimeMarkers: CrimeMarker[] = (recentCrimes || [])
-    .map((crime) => {
-      const loc = crime.location as { latitude?: number; longitude?: number; area?: string } | undefined;
-      const lat = loc?.latitude ?? crime.latitude;
-      const lng = loc?.longitude ?? crime.longitude;
-      return {
-        raw: crime,
-        lat: typeof lat === 'number' ? lat : Number(lat),
-        lng: typeof lng === 'number' ? lng : Number(lng),
-        loc,
-      };
-    })
-    .filter(
-      (row) =>
-        row.raw &&
-        !Number.isNaN(row.lat) &&
-        !Number.isNaN(row.lng) &&
-        row.lat !== 0 &&
-        row.lng !== 0
-    )
-    .filter((row) => {
-      if (selectedFilter === 'ALL') return true;
-      return row.raw.severity === selectedFilter;
-    })
-    .slice(0, 24)
-    .map((row) => ({
-      id: String(row.raw.id),
-      latitude: row.lat,
-      longitude: row.lng,
-      title: String(row.raw.title ?? ''),
-      severity: String(row.raw.severity ?? ''),
-      area: row.loc?.area,
-    }));
+  const crimeMarkers: CrimeMarker[] = useMemo(() => {
+    const areaQuery = selectedArea.trim().toLowerCase();
+    return (recentCrimes || [])
+      .map((crime) => {
+        const loc = crime.location as { latitude?: number; longitude?: number; area?: string; address?: string; district?: string; division?: string } | undefined;
+        const lat = loc?.latitude ?? crime.latitude;
+        const lng = loc?.longitude ?? crime.longitude;
+        return {
+          raw: crime,
+          lat: typeof lat === 'number' ? lat : Number(lat),
+          lng: typeof lng === 'number' ? lng : Number(lng),
+          loc,
+        };
+      })
+      .filter(
+        (row) =>
+          row.raw &&
+          !Number.isNaN(row.lat) &&
+          !Number.isNaN(row.lng) &&
+          row.lat !== 0 &&
+          row.lng !== 0
+      )
+      .filter((row) => selectedFilter === 'ALL' || row.raw.severity === selectedFilter)
+      .filter((row) => {
+        if (!areaQuery) return true;
+        const haystack = [
+          row.loc?.area,
+          row.loc?.address,
+          row.loc?.district,
+          row.loc?.division,
+          row.raw.title,
+          row.raw.description,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(areaQuery);
+      })
+      .slice(0, 100)
+      .map((row) => ({
+        id: String(row.raw.id),
+        latitude: row.lat,
+        longitude: row.lng,
+        title: String(row.raw.title ?? ''),
+        severity: String(row.raw.severity ?? ''),
+        area: row.loc?.area,
+      }));
+  }, [recentCrimes, selectedArea, selectedFilter]);
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -137,6 +154,36 @@ export default function MapScreen() {
     }
   };
 
+  const searchArea = async () => {
+    const query = searchQuery.trim();
+    if (query.length < 2) {
+      setSelectedArea('');
+      return;
+    }
+    setSelectedArea(query);
+    try {
+      const hits = await Location.geocodeAsync(query);
+      const first = hits[0];
+      if (first) {
+        const region = {
+          latitude: first.latitude,
+          longitude: first.longitude,
+          latitudeDelta: 0.035,
+          longitudeDelta: 0.035,
+        };
+        setUserLocation(region);
+        mapRef.current?.animateToRegion(region, 500);
+      }
+    } catch {
+      Alert.alert('Place search failed', 'Filtering incidents by text, but the map could not focus that place.');
+    }
+  };
+
+  const clearArea = () => {
+    setSearchQuery('');
+    setSelectedArea('');
+  };
+
   return (
     <View style={styles.container}>
       {/* Top Search & Filters */}
@@ -149,7 +196,16 @@ export default function MapScreen() {
             placeholderTextColor={COLORS.textMuted}
             value={searchQuery}
             onChangeText={setSearchQuery}
+            onSubmitEditing={searchArea}
           />
+          {searchQuery ? (
+            <TouchableOpacity onPress={clearArea}>
+              <MaterialIcons name="close" size={20} color={COLORS.textMuted} />
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity style={styles.searchBtn} onPress={searchArea}>
+            <MaterialIcons name="travel-explore" size={18} color={COLORS.bg} />
+          </TouchableOpacity>
         </View>
         
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters}>
@@ -174,6 +230,7 @@ export default function MapScreen() {
       </View>
 
       <MapView
+        ref={mapRef}
         provider={PROVIDER_GOOGLE}
         style={styles.map}
         region={userLocation}
@@ -240,6 +297,7 @@ export default function MapScreen() {
           ))}
         </View>
         <Text style={styles.legendNote}>Data updates every 60s • Tap markers for details</Text>
+        {selectedArea ? <Text style={styles.legendNote}>Filtering: {selectedArea} • {crimeMarkers.length} incidents</Text> : null}
       </View>
     </View>
   );
@@ -273,6 +331,15 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 15,
     marginLeft: SPACING.sm,
+  },
+  searchBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: SPACING.xs,
   },
   filters: {
     marginTop: SPACING.sm,

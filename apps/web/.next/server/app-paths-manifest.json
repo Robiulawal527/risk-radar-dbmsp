@@ -1,13 +1,1 @@
-{
-  "/api/backend/[...path]/route": "app/api/backend/[...path]/route.js",
-  "/_not-found/page": "app/_not-found/page.js",
-  "/auth/login/page": "app/auth/login/page.js",
-  "/api/backend/users/profile/route": "app/api/backend/users/profile/route.js",
-  "/api/backend/auth/me/route": "app/api/backend/auth/me/route.js",
-  "/api/backend/users/search/route": "app/api/backend/users/search/route.js",
-  "/page": "app/page.js",
-  "/dashboard/settings/page": "app/dashboard/settings/page.js",
-  "/dashboard/social-radar/page": "app/dashboard/social-radar/page.js",
-  "/dashboard/rankings/page": "app/dashboard/rankings/page.js",
-  "/dashboard/map/page": "app/dashboard/map/page.js"
-}
+{}

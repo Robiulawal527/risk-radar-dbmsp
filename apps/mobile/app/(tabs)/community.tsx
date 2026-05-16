@@ -1,110 +1,185 @@
-import React from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import React, { useState } from 'react';
+import { Alert, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { MaterialIcons } from '@expo/vector-icons';
+import type { CriminalRanking, PhilanthropistRanking, SocialRadarMatch } from '@risk-radar/types';
+import { api } from '@/lib/api';
+import { useAuthStore } from '@/store/auth';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../constants/theme';
 
 export default function CommunityScreen() {
-  const { data: matches } = useQuery({
-    queryKey: ['social-radar'],
-    queryFn: async () => {
-      const response = await api.get('/analytics/social-radar?interests=Public Safety,Community Watch');
-      return response.data.data;
+  const { user } = useAuthStore();
+  const [skillSearch, setSkillSearch] = useState('');
+
+  const matchMutation = useMutation({
+    mutationFn: async (skill: string) => {
+      const response = await api.get<{ success: boolean; data: SocialRadarMatch[] }>('/users/search', {
+        params: { skill },
+      });
+      return response.data.data ?? [];
     },
+    onSuccess: (rows) => {
+      if (!rows.length) Alert.alert('No matches yet', 'Try a different skill.');
+    },
+    onError: () => Alert.alert('Search failed', 'Could not load matching community members.'),
   });
 
-  const { data: rankings } = useQuery({
-    queryKey: ['rankings'],
+  const { data: rankings, isError: rankingsError } = useQuery({
+    queryKey: ['community-rankings'],
     queryFn: async () => {
       const [criminals, philanthropists] = await Promise.all([
-        api.get('/analytics/rankings/criminals'),
-        api.get('/analytics/rankings/philanthropists'),
+        api.get<{ success: boolean; data: CriminalRanking[] }>('/analytics/rankings/criminals'),
+        api.get<{ success: boolean; data: PhilanthropistRanking[] }>('/analytics/rankings/philanthropists'),
       ]);
       return {
-        criminals: criminals.data.data,
-        philanthropists: philanthropists.data.data,
+        criminals: criminals.data.data ?? [],
+        philanthropists: philanthropists.data.data ?? [],
       };
     },
   });
 
+  const savedSkills = user?.skills ?? [];
+  const matches = matchMutation.data ?? [];
+
+  const runSearch = (skill?: string) => {
+    const query = (skill ?? skillSearch).trim();
+    if (!query) {
+      Alert.alert('Enter a skill', 'Search by a skill such as doctor, engineer, or volunteer.');
+      return;
+    }
+    setSkillSearch(query);
+    matchMutation.mutate(query);
+  };
+
+  const openLink = (url: string) => {
+    Linking.openURL(url).catch(() => Alert.alert('Could not open link', url));
+  };
+
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={styles.header}>
-        <Text style={styles.title}>Community Radar</Text>
-        <Text style={styles.subtitle}>Trusted connections & safety leaders</Text>
+        <Text style={styles.title}>Social Radar</Text>
+        <Text style={styles.subtitle}>Find trusted allies from the registered community</Text>
       </View>
 
-      {/* Social Radar */}
+      <View style={styles.card}>
+        <Text style={styles.label}>SEARCH BY SKILL</Text>
+        <View style={styles.searchRow}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="doctor, engineer, web developer"
+            placeholderTextColor={COLORS.textMuted}
+            value={skillSearch}
+            onChangeText={setSkillSearch}
+            onSubmitEditing={() => runSearch()}
+          />
+          <TouchableOpacity style={styles.searchButton} onPress={() => runSearch()} disabled={matchMutation.isPending}>
+            <MaterialIcons name="search" size={22} color={COLORS.bg} />
+          </TouchableOpacity>
+        </View>
+        {savedSkills.length > 0 ? (
+          <View style={styles.tags}>
+            {savedSkills.map((skill) => (
+              <TouchableOpacity key={skill} style={styles.skillChip} onPress={() => runSearch(skill)}>
+                <Text style={styles.skillText}>{skill}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
+      </View>
+
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <MaterialIcons name="people" size={20} color="#8b5cf6" />
-          <Text style={styles.sectionTitle}>Social Radar Matches</Text>
+          <Text style={styles.sectionTitle}>People by Skill</Text>
         </View>
-        
-        {matches?.slice(0, 3).map((match: any, index: number) => (
-          <View key={index} style={styles.matchCard}>
-            <View style={styles.matchHeader}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{match.name?.[0] || 'U'}</Text>
-              </View>
-              <View style={styles.matchInfo}>
-                <Text style={styles.matchName}>{match.name}</Text>
-                <Text style={styles.matchScore}>{match.compatibilityScore}% match</Text>
-              </View>
-              <View style={styles.trustBadge}>
-                <Text style={styles.trustScore}>{match.trustScore}</Text>
-              </View>
-            </View>
-            <View style={styles.matchTags}>
-              {match.interests?.slice(0, 3).map((tag: string, i: number) => (
-                <View key={i} style={styles.tag}>
-                  <Text style={styles.tagText}>{tag}</Text>
+        {matchMutation.isPending ? <Text style={styles.emptyText}>Searching...</Text> : null}
+        {!matchMutation.isPending && matches.length === 0 ? (
+          <Text style={styles.emptyText}>Enter a skill, then run a search.</Text>
+        ) : (
+          matches.map((match) => (
+            <View key={match.id || match.userId} style={styles.matchCard}>
+              <View style={styles.matchHeader}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{(match.name || match.email || '?')[0].toUpperCase()}</Text>
                 </View>
-              ))}
+                <View style={styles.matchInfo}>
+                  <Text style={styles.matchName} numberOfLines={1}>{match.name}</Text>
+                  <Text style={styles.matchEmail} numberOfLines={1}>{match.email}</Text>
+                  <View style={styles.verifiedRow}>
+                    <MaterialIcons name="check-circle" size={13} color={COLORS.accent} />
+                    <Text style={styles.verifiedText}>Verified Profile</Text>
+                  </View>
+                </View>
+              </View>
+              <View style={styles.tags}>
+                {(match.skills || []).length > 0 ? (
+                  match.skills.map((skill) => (
+                    <View key={skill} style={styles.tag}>
+                      <Text style={styles.tagText}>{skill}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.muted}>No skills listed</Text>
+                )}
+              </View>
+              <View style={styles.contactRow}>
+                <TouchableOpacity
+                  style={[styles.contactButton, !match.phone && styles.contactDisabled]}
+                  disabled={!match.phone}
+                  onPress={() => match.phone && openLink(`tel:${match.phone}`)}
+                >
+                  <MaterialIcons name="phone" size={17} color={match.phone ? COLORS.bg : COLORS.textMuted} />
+                  <Text style={[styles.contactButtonText, !match.phone && styles.contactDisabledText]}>
+                    {match.phone ? 'Call' : 'No Phone'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.emailButton} onPress={() => openLink(`mailto:${match.email}`)}>
+                  <MaterialIcons name="mail" size={17} color={COLORS.text} />
+                  <Text style={styles.emailButtonText}>Email</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        ))}
+          ))
+        )}
       </View>
 
-      {/* Top Contributors */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <MaterialIcons name="emoji-events" size={20} color="#fbbf24" />
-          <Text style={styles.sectionTitle}>Top Safety Champions</Text>
+          <Text style={styles.sectionTitle}>Top Reporters</Text>
         </View>
-        
-        {rankings?.philanthropists?.slice(0, 4).map((champ: any, index: number) => (
-          <View key={index} style={styles.championCard}>
+        {rankingsError ? <Text style={styles.emptyText}>Could not load rankings.</Text> : null}
+        {(rankings?.philanthropists ?? []).length === 0 && !rankingsError ? <Text style={styles.emptyText}>No report activity yet.</Text> : null}
+        {rankings?.philanthropists?.slice(0, 5).map((champ) => (
+          <View key={champ.userId} style={styles.championCard}>
             <View style={styles.rankBadge}>
               <Text style={styles.rankText}>#{champ.rank}</Text>
             </View>
-            <Text style={styles.championName}>{champ.name}</Text>
-            <Text style={styles.championStats}>
-              {champ.reportsSubmitted} reports • {Math.round(champ.accuracy * 100)}% accuracy
-            </Text>
+            <View style={styles.rankInfo}>
+              <Text style={styles.championName}>{champ.name}</Text>
+              <Text style={styles.championStats}>{champ.reportsSubmitted} reports • {Math.round(champ.accuracy * 100)}% accuracy</Text>
+            </View>
           </View>
         ))}
       </View>
 
-      {/* Most Wanted */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <MaterialIcons name="gavel" size={20} color="#ef4444" />
-          <Text style={styles.sectionTitle}>Most Wanted</Text>
+          <MaterialIcons name="gavel" size={20} color={COLORS.danger} />
+          <Text style={styles.sectionTitle}>Criminal Records</Text>
         </View>
-        
-        {rankings?.criminals?.slice(0, 3).map((criminal: any, index: number) => (
-          <View key={index} style={styles.criminalCard}>
+        {(rankings?.criminals ?? []).length === 0 && !rankingsError ? <Text style={styles.emptyText}>No criminal records yet.</Text> : null}
+        {rankings?.criminals?.slice(0, 5).map((criminal) => (
+          <View key={`${criminal.rank}-${criminal.criminalInfo.name}`} style={styles.criminalCard}>
             <View style={styles.criminalHeader}>
-              <Text style={styles.criminalName}>{criminal.criminalInfo?.name || 'Redacted'}</Text>
-              <View style={[styles.dangerBadge, { backgroundColor: criminal.dangerLevel === 'CRITICAL' ? '#ef4444' : '#f59e0b' }]}>
+              <Text style={styles.criminalName} numberOfLines={1}>#{criminal.rank} {criminal.criminalInfo.name}</Text>
+              <View style={[styles.dangerBadge, criminal.dangerLevel === 'CRITICAL' ? styles.criticalBadge : styles.highBadge]}>
                 <Text style={styles.dangerText}>{criminal.dangerLevel}</Text>
               </View>
             </View>
-            <Text style={styles.criminalDesc}>{criminal.criminalInfo?.description}</Text>
-            <Text style={styles.criminalStats}>
-              {criminal.crimeCount} incidents • {criminal.mostFrequentCrime}
-            </Text>
+            <Text style={styles.criminalDesc} numberOfLines={3}>{criminal.criminalInfo.description}</Text>
+            <Text style={styles.criminalStats}>{criminal.crimeCount} linked incidents • {String(criminal.mostFrequentCrime).replace(/_/g, ' ')}</Text>
           </View>
         ))}
       </View>
@@ -113,174 +188,55 @@ export default function CommunityScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#020617',
-  },
-  header: {
-    padding: 20,
-    paddingTop: 50,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: '#fff',
-  },
-  subtitle: {
-    color: '#64748b',
-    marginTop: 4,
-  },
-  section: {
-    paddingHorizontal: 16,
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  matchCard: {
-    backgroundColor: '#111827',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#1f2937',
-  },
-  matchHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#8b5cf6',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  matchInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  matchName: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  matchScore: {
-    color: '#22d3ee',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  trustBadge: {
-    backgroundColor: '#22c55e',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  trustScore: {
-    color: '#020617',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  matchTags: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 10,
-  },
-  tag: {
-    backgroundColor: '#1e2937',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  tagText: {
-    color: '#94a3b8',
-    fontSize: 10,
-    fontWeight: '500',
-  },
-  championCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#111827',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 8,
-  },
-  rankBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#fbbf24',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  rankText: {
-    color: '#020617',
-    fontWeight: '800',
-    fontSize: 12,
-  },
-  championName: {
-    flex: 1,
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 12,
-  },
-  championStats: {
-    color: '#64748b',
-    fontSize: 11,
-  },
-  criminalCard: {
-    backgroundColor: '#1f2937',
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: '#ef4444',
-  },
-  criminalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  criminalName: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  dangerBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  dangerText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  criminalDesc: {
-    color: '#94a3b8',
-    fontSize: 12,
-    marginTop: 6,
-    lineHeight: 16,
-  },
-  criminalStats: {
-    color: '#64748b',
-    fontSize: 11,
-    marginTop: 6,
-  },
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  content: { padding: SPACING.lg, paddingTop: 54, paddingBottom: 120 },
+  header: { marginBottom: SPACING.lg },
+  title: { ...TYPOGRAPHY.h1, color: COLORS.text },
+  subtitle: { ...TYPOGRAPHY.body, color: COLORS.textMuted, marginTop: 5 },
+  card: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.lg, ...SHADOWS.card },
+  label: { color: COLORS.textMuted, fontSize: 11, fontWeight: '900', marginBottom: SPACING.sm },
+  searchRow: { flexDirection: 'row', gap: SPACING.sm },
+  searchInput: { flex: 1, backgroundColor: '#111827', borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: RADIUS.sm, color: COLORS.text, paddingHorizontal: SPACING.md, minHeight: 48 },
+  searchButton: { width: 48, height: 48, borderRadius: RADIUS.sm, backgroundColor: COLORS.accent, alignItems: 'center', justifyContent: 'center' },
+  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: SPACING.sm },
+  skillChip: { borderWidth: 1, borderColor: COLORS.cardBorder, backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.full },
+  skillText: { color: COLORS.text, fontSize: 12, fontWeight: '700' },
+  section: { marginBottom: SPACING.xl },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md },
+  sectionTitle: { ...TYPOGRAPHY.h3, color: COLORS.text },
+  emptyText: { color: COLORS.textMuted, textAlign: 'center', paddingVertical: SPACING.lg },
+  matchCard: { backgroundColor: COLORS.card, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 1, borderColor: COLORS.cardBorder, ...SHADOWS.card },
+  matchHeader: { flexDirection: 'row', alignItems: 'center' },
+  avatar: { width: 54, height: 54, borderRadius: RADIUS.md, backgroundColor: '#8b5cf6', justifyContent: 'center', alignItems: 'center' },
+  avatarText: { color: '#fff', fontSize: 22, fontWeight: '900' },
+  matchInfo: { flex: 1, marginLeft: SPACING.md },
+  matchName: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  matchEmail: { color: COLORS.textMuted, fontSize: 12, marginTop: 2 },
+  verifiedRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 5 },
+  verifiedText: { color: COLORS.accent, fontSize: 11, fontWeight: '700' },
+  tag: { backgroundColor: '#1e2937', paddingHorizontal: 9, paddingVertical: 5, borderRadius: 7 },
+  tagText: { color: COLORS.text, fontSize: 11, fontWeight: '600' },
+  muted: { color: COLORS.textMuted, fontSize: 12, fontStyle: 'italic' },
+  contactRow: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
+  contactButton: { flex: 1, backgroundColor: COLORS.accent, borderRadius: RADIUS.sm, paddingVertical: 11, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
+  contactDisabled: { backgroundColor: 'rgba(255,255,255,0.05)' },
+  contactButtonText: { color: COLORS.bg, fontWeight: '900' },
+  contactDisabledText: { color: COLORS.textMuted },
+  emailButton: { flex: 1, borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: RADIUS.sm, paddingVertical: 11, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
+  emailButtonText: { color: COLORS.text, fontWeight: '800' },
+  championCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.card, padding: SPACING.md, borderRadius: RADIUS.sm, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.cardBorder },
+  rankBadge: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#fbbf24', justifyContent: 'center', alignItems: 'center' },
+  rankText: { color: COLORS.bg, fontWeight: '900', fontSize: 12 },
+  rankInfo: { flex: 1, marginLeft: SPACING.md },
+  championName: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
+  championStats: { color: COLORS.textMuted, fontSize: 11, marginTop: 2 },
+  criminalCard: { backgroundColor: COLORS.card, padding: SPACING.md, borderRadius: RADIUS.sm, marginBottom: SPACING.sm, borderLeftWidth: 4, borderLeftColor: COLORS.danger },
+  criminalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: SPACING.sm },
+  criminalName: { color: COLORS.text, fontSize: 15, fontWeight: '800', flex: 1 },
+  dangerBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  criticalBadge: { backgroundColor: COLORS.danger },
+  highBadge: { backgroundColor: COLORS.warning },
+  dangerText: { color: '#fff', fontSize: 10, fontWeight: '900' },
+  criminalDesc: { color: COLORS.textMuted, fontSize: 12, marginTop: 6, lineHeight: 17 },
+  criminalStats: { color: COLORS.textMuted, fontSize: 11, marginTop: 6 },
 });

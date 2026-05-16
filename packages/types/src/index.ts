@@ -95,6 +95,7 @@ export interface SignupData {
 export interface Location {
   latitude: number;
   longitude: number;
+  accuracy?: number | null;
   address?: string;
   area?: string;
   district?: string;
