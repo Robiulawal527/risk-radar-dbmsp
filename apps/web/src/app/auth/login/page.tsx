@@ -11,28 +11,7 @@ import { toast } from 'sonner';
 import axios from 'axios';
 import { api } from '@/lib/api';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase/client';
-import type { AuthUser } from '@/store/auth';
-import type { UserRole } from '@/lib/types';
-
-function mapUser(u: Record<string, unknown>): AuthUser {
-  return {
-    id: String(u.id),
-    name: String(u.name ?? ''),
-    email: String(u.email ?? ''),
-    role: (String(u.role ?? 'USER').toUpperCase() as UserRole) || 'USER',
-    avatar: u.avatar != null ? String(u.avatar) : undefined,
-    phone: u.phone != null ? String(u.phone) : undefined,
-    skills: Array.isArray(u.skills) ? u.skills.map(String) : [],
-    alertLatitude: typeof u.alertLatitude === 'number' ? u.alertLatitude : null,
-    alertLongitude: typeof u.alertLongitude === 'number' ? u.alertLongitude : null,
-    alertsEnabled:
-      typeof u.alertsEnabled === 'boolean'
-        ? u.alertsEnabled
-        : u.alertsEnabled == null
-          ? null
-          : Boolean(u.alertsEnabled),
-  };
-}
+import { mapAuthUser, type AuthTokenResponse } from '@/lib/auth-session';
 
 function LoginInner() {
   const [email, setEmail] = useState('');
@@ -42,15 +21,33 @@ function LoginInner() {
   const searchParams = useSearchParams();
   const { setSession } = useAuthStore();
 
+  const finishLogin = async (accessToken: string) => {
+    const meRes = await api.get<{ success: boolean; data: Record<string, unknown> }>('/auth/me', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    setSession(accessToken, mapAuthUser(meRes.data.data));
+
+    toast.success('Welcome back');
+    const next = searchParams.get('next');
+    router.push(next && next.startsWith('/') ? next : '/dashboard/map');
+  };
+
+  const loginWithBackend = async () => {
+    const res = await api.post<{ success: boolean; data: AuthTokenResponse }>('/auth/login', {
+      email: email.trim(),
+      password,
+    });
+    const token = res.data.data?.accessToken;
+    if (!token) throw new Error('Login succeeded but no access token was returned.');
+    await finishLogin(token);
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
       if (!isSupabaseConfigured()) {
-        toast.error('Supabase is not configured', {
-          description:
-            'Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) in apps/web env.',
-        });
+        await loginWithBackend();
         return;
       }
       const supabase = getSupabaseBrowserClient();
@@ -61,19 +58,10 @@ function LoginInner() {
         password,
       });
       if (error || !data.session?.access_token) {
-        throw new Error(error?.message || 'Invalid credentials');
+        await loginWithBackend();
+        return;
       }
-      const accessToken = data.session.access_token;
-
-      const meRes = await api.get<{ success: boolean; data: Record<string, unknown> }>('/auth/me', {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      const user = mapUser(meRes.data.data);
-      setSession(accessToken, user);
-
-      toast.success('Welcome back');
-      const next = searchParams.get('next');
-      router.push(next && next.startsWith('/') ? next : '/dashboard/map');
+      await finishLogin(data.session.access_token);
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && !err.response) {
         toast.error('Cannot reach the API', {

@@ -11,7 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
 import { filterCrimesByAreaQuery, fetchCrimesForMapFromSupabase } from '@/lib/map-crimes';
-import { isSupabaseConfigured } from '@/lib/supabase/client';
+import { fetchActiveSosAlertsFromSupabase } from '@/lib/sos-alerts';
+import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { nominatimSearchBangladesh } from '@/lib/nominatim-client';
 import type { Crime } from '@/lib/types';
 import { Severity } from '@/lib/types';
@@ -68,6 +69,37 @@ export default function MapPage() {
     refetchOnWindowFocus: true,
     retry: 2,
   });
+
+  const {
+    data: activeSosAlerts = [],
+    isError: sosError,
+    refetch: refetchSos,
+  } = useQuery({
+    queryKey: ['active-sos-alerts'],
+    enabled: isSupabaseConfigured(),
+    queryFn: () => fetchActiveSosAlertsFromSupabase(200),
+    staleTime: 5_000,
+    refetchInterval: 15_000,
+    retry: 2,
+  });
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+    const channel = supabase
+      .channel('web-live-map')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'crimes' }, () => {
+        void refetch();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sos_alerts' }, () => {
+        void refetchSos();
+      })
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [refetch, refetchSos]);
 
   const supabaseToastKey = useRef<string | null>(null);
   useEffect(() => {
@@ -251,15 +283,16 @@ export default function MapPage() {
             LIVE
           </Badge>
           <div className="text-slate-400">
-            {isError ? (
-              <span className="text-amber-400">Data unavailable</span>
-            ) : (
-              <>
-                {filteredCrimes.length}
-                {selectedArea ? ` match` : ` incidents`}
-                {selectedArea ? '' : ` • ${highRisk} high risk`}
-              </>
-            )}
+                {isError ? (
+                  <span className="text-amber-400">Data unavailable</span>
+                ) : (
+                  <>
+                    {filteredCrimes.length}
+                    {selectedArea ? ` match` : ` incidents`}
+                    {selectedArea ? '' : ` • ${highRisk} high risk`}
+                    {activeSosAlerts.length ? ` • ${activeSosAlerts.length} live SOS` : ''}
+                  </>
+                )}
           </div>
           {isSupabaseConfigured() && (
             <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
@@ -305,6 +338,11 @@ export default function MapPage() {
       )}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+        {sosError ? (
+          <div className="xl:col-span-12 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            Could not refresh live SOS alerts. Check RLS/realtime for <code>sos_alerts</code>.
+          </div>
+        ) : null}
         <div className="space-y-4 xl:col-span-3">
           <Card className="glass-panel">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
@@ -442,7 +480,12 @@ export default function MapPage() {
             ) : null}
 
             {!isError ? (
-              <CrimeMap ref={crimeMapRef} crimes={filteredCrimes} showEmptyState={showEmptyOverlay} />
+              <CrimeMap
+                ref={crimeMapRef}
+                crimes={filteredCrimes}
+                sosAlerts={activeSosAlerts}
+                showEmptyState={showEmptyOverlay}
+              />
             ) : (
               <div className="flex h-full min-h-[420px] items-center justify-center bg-[#0a1020] text-slate-500">
                 Map unavailable — use retry above.
@@ -452,7 +495,7 @@ export default function MapPage() {
             <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-[400] flex flex-wrap items-end justify-between gap-2 sm:pointer-events-auto">
               <div className="glass rounded-2xl px-4 py-2.5 text-[11px] text-slate-300 shadow-lg">
                 <span className="mr-2 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-teal-400 align-middle" />
-                Tap markers for details · heat = severity-weighted density
+                Tap markers for details · red circles = live SOS
               </div>
             </div>
           </div>

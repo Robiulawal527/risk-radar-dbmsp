@@ -10,8 +10,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
+import { createSosAlertInSupabase, fetchMySosAlertsFromSupabase } from '@/lib/sos-alerts';
 import { SOSStatus } from '@/lib/types';
 import type { SOSRequest } from '@/lib/types';
+import { isSupabaseConfigured } from '@/lib/supabase/client';
+import { useAuthStore } from '@/store/auth';
 
 type ApiResponse<T> = {
   success?: boolean;
@@ -255,6 +258,7 @@ function buildLocalRequest(coordinates: Coordinates, syncError: string): LocalSO
 
 export default function SOSPage() {
   const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
   const [confirming, setConfirming] = useState(false);
   const [localRequests, setLocalRequests] = useState<LocalSOSRequest[]>(() =>
     readLocalSOSRequests()
@@ -274,13 +278,22 @@ export default function SOSPage() {
   } = useQuery({
     queryKey: ['sos-my'],
     queryFn: async () => {
-      const data = await requestWithFallback(GET_MY_SOS_ENDPOINTS, async (endpoint) => {
-        const res = await api.get<ApiResponse<SOSRequest[]> | SOSRequest[]>(endpoint);
-        return normalizeRequests(res.data);
-      });
+      const data =
+        isSupabaseConfigured() && user?.id
+          ? await fetchMySosAlertsFromSupabase(user.id).catch(() =>
+              requestWithFallback(GET_MY_SOS_ENDPOINTS, async (endpoint) => {
+                const res = await api.get<ApiResponse<SOSRequest[]> | SOSRequest[]>(endpoint);
+                return normalizeRequests(res.data);
+              })
+            )
+          : await requestWithFallback(GET_MY_SOS_ENDPOINTS, async (endpoint) => {
+              const res = await api.get<ApiResponse<SOSRequest[]> | SOSRequest[]>(endpoint);
+              return normalizeRequests(res.data);
+            });
 
       return data;
     },
+    enabled: Boolean(user?.id),
     staleTime: 30_000,
     retry: (failureCount, err) => {
       const status = (err as { response?: { status?: number } })?.response?.status;
@@ -309,17 +322,30 @@ export default function SOSPage() {
       const payload = buildSOSPayload(coordinates);
 
       try {
-        const created = await requestWithFallback(CREATE_SOS_ENDPOINTS, async (endpoint) => {
-          const res = await api.post<ApiResponse<SOSRequest> | SOSRequest>(endpoint, payload);
-          const body = res.data;
+        const direct =
+          user?.id && isSupabaseConfigured()
+            ? await createSosAlertInSupabase({
+                userId: user.id,
+                latitude: coordinates.latitude,
+                longitude: coordinates.longitude,
+                accuracy: coordinates.accuracy,
+                message: 'Emergency assistance requested',
+              })
+            : null;
 
-          if ('success' in body && body.success === false) {
-            throw new Error(body.message || body.error || 'SOS request could not be created.');
-          }
+        const created =
+          direct ??
+          (await requestWithFallback(CREATE_SOS_ENDPOINTS, async (endpoint) => {
+            const res = await api.post<ApiResponse<SOSRequest> | SOSRequest>(endpoint, payload);
+            const body = res.data;
 
-          if ('data' in body && body.data) return body.data;
-          return body as SOSRequest;
-        });
+            if ('success' in body && body.success === false) {
+              throw new Error(body.message || body.error || 'SOS request could not be created.');
+            }
+
+            if ('data' in body && body.data) return body.data;
+            return body as SOSRequest;
+          }));
 
         return { request: created, savedLocally: false };
       } catch (error) {
@@ -349,6 +375,7 @@ export default function SOSPage() {
       }
 
       await queryClient.invalidateQueries({ queryKey: ['sos-my'] });
+      await queryClient.invalidateQueries({ queryKey: ['active-sos-alerts'] });
     },
     onError: (err) => {
       toast.error('Could not send SOS', {

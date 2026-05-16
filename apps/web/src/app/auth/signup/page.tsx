@@ -10,28 +10,7 @@ import { useAuthStore } from '@/store/auth';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase/client';
-import type { AuthUser } from '@/store/auth';
-import type { UserRole } from '@/lib/types';
-
-function mapUser(u: Record<string, unknown>): AuthUser {
-  return {
-    id: String(u.id),
-    name: String(u.name ?? ''),
-    email: String(u.email ?? ''),
-    role: (String(u.role ?? 'USER').toUpperCase() as UserRole) || 'USER',
-    avatar: u.avatar != null ? String(u.avatar) : undefined,
-    phone: u.phone != null ? String(u.phone) : undefined,
-    skills: Array.isArray(u.skills) ? u.skills.map(String) : [],
-    alertLatitude: typeof u.alertLatitude === 'number' ? u.alertLatitude : null,
-    alertLongitude: typeof u.alertLongitude === 'number' ? u.alertLongitude : null,
-    alertsEnabled:
-      typeof u.alertsEnabled === 'boolean'
-        ? u.alertsEnabled
-        : u.alertsEnabled == null
-          ? null
-          : Boolean(u.alertsEnabled),
-  };
-}
+import { mapAuthUser, type AuthTokenResponse } from '@/lib/auth-session';
 
 export default function SignupPage() {
   const [name, setName] = useState('');
@@ -40,6 +19,26 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { setSession } = useAuthStore();
+
+  const finishSignup = async (accessToken: string) => {
+    const meRes = await api.get<{ success: boolean; data: Record<string, unknown> }>('/auth/me', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    setSession(accessToken, mapAuthUser(meRes.data.data));
+    toast.success('Account created');
+    router.push('/dashboard/map');
+  };
+
+  const signupWithBackend = async () => {
+    const res = await api.post<{ success: boolean; data: AuthTokenResponse }>('/auth/signup', {
+      name: name.trim(),
+      email: email.trim(),
+      password,
+    });
+    const token = res.data.data?.accessToken;
+    if (!token) throw new Error('Signup succeeded but no access token was returned.');
+    await finishSignup(token);
+  };
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,10 +49,7 @@ export default function SignupPage() {
     setLoading(true);
     try {
       if (!isSupabaseConfigured()) {
-        toast.error('Supabase is not configured', {
-          description:
-            'Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) in apps/web env.',
-        });
+        await signupWithBackend();
         return;
       }
       const supabase = getSupabaseBrowserClient();
@@ -69,7 +65,10 @@ export default function SignupPage() {
         },
       });
 
-      if (error) throw new Error(error.message);
+      if (error) {
+        await signupWithBackend();
+        return;
+      }
 
       // If email confirmation is enabled, there may be no session yet.
       const accessToken = data.session?.access_token;
@@ -81,13 +80,7 @@ export default function SignupPage() {
         return;
       }
 
-      const meRes = await api.get<{ success: boolean; data: Record<string, unknown> }>('/auth/me', {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      setSession(accessToken, mapUser(meRes.data.data));
-
-      toast.success('Account created');
-      router.push('/dashboard/map');
+      await finishSignup(accessToken);
     } catch (err: unknown) {
       const msg = (() => {
         if (err && typeof err === 'object' && 'response' in err) {
