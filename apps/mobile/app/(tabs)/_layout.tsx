@@ -24,14 +24,28 @@ export default function TabLayout() {
   return (
     <Tabs 
       screenOptions={{ 
-        tabBarActiveTintColor: '#22d3ee',
+        tabBarActiveTintColor: '#00E5FF',
         tabBarInactiveTintColor: '#64748b',
         tabBarStyle: {
-          backgroundColor: '#0f172a',
-          borderTopColor: '#1e2937',
-          height: 62,
-          paddingBottom: 8,
-          paddingTop: 6,
+          position: 'absolute',
+          left: 14,
+          right: 14,
+          bottom: 14,
+          backgroundColor: 'rgba(15, 23, 42, 0.96)',
+          borderTopWidth: 0,
+          borderRadius: 24,
+          height: 70,
+          paddingBottom: 12,
+          paddingTop: 10,
+          shadowColor: '#000',
+          shadowOpacity: 0.35,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 18,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '700',
         },
         headerShown: false,
       }}
@@ -40,13 +54,14 @@ export default function TabLayout() {
         name="home"
         options={{
           title: 'Home',
+          href: null,
           tabBarIcon: ({ color }) => <MaterialIcons name="home" size={24} color={color} />,
         }}
       />
       <Tabs.Screen
         name="map"
         options={{
-          title: 'Map',
+          title: 'Radar',
           tabBarIcon: ({ color }) => <MaterialIcons name="map" size={24} color={color} />,
         }}
       />
@@ -75,6 +90,7 @@ export default function TabLayout() {
         name="sos"
         options={{
           title: 'SOS',
+          href: null,
           tabBarIcon: ({ color }) => <MaterialIcons name="emergency" size={24} color={color} />,
         }}
       />

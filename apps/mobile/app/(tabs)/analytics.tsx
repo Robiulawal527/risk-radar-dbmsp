@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { MaterialIcons } from '@expo/vector-icons';
 import { api } from '@/lib/api';
 import type { CrimeStats, Severity } from '@risk-radar/types';
+import { buildStatsFromCrimes, fetchCrimesForMapFromSupabase } from '@/lib/map-crimes';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../constants/theme';
 
 const EMPTY_STATS: CrimeStats = {
@@ -44,8 +46,14 @@ export default function AnalyticsScreen() {
   const { data = EMPTY_STATS, isLoading, isError, refetch } = useQuery<CrimeStats>({
     queryKey: ['stats'],
     queryFn: async () => {
-      const response = await api.get<{ success: boolean; data: CrimeStats }>('/analytics/stats');
-      return response.data.data ?? EMPTY_STATS;
+      try {
+        const response = await api.get<{ success: boolean; data: CrimeStats }>('/analytics/stats');
+        return response.data.data ?? EMPTY_STATS;
+      } catch (error) {
+        if (!isSupabaseConfigured()) throw error;
+        const crimes = await fetchCrimesForMapFromSupabase(3000);
+        return buildStatsFromCrimes(crimes);
+      }
     },
   });
 
@@ -81,6 +89,12 @@ export default function AnalyticsScreen() {
   const highRiskAreas = data.crimesByArea.filter(
     (row) => row.riskLevel === 'HIGH' || row.riskLevel === 'CRITICAL'
   ).length;
+  const safetyScore = Math.max(58, Math.min(98, 100 - Math.floor(highRiskAreas * 4.5)));
+  const topArea = data.crimesByArea[0];
+  const todaysCount =
+    data.trends.find((row) => row.date === new Date().toISOString().slice(0, 10))?.count ??
+    data.trends.at(-1)?.count ??
+    0;
   const maxCategory = Math.max(1, ...categories.map((row) => row.value));
   const maxTrend = Math.max(1, ...trends.map((row) => row.count));
 
@@ -95,19 +109,69 @@ export default function AnalyticsScreen() {
           <MaterialIcons name="query-stats" size={26} color={COLORS.accent} />
         </View>
         <View style={styles.headerText}>
-          <Text style={styles.title}>Crime Analytics</Text>
-          <Text style={styles.subtitle}>Live intelligence from your Risk Radar database</Text>
+          <Text style={styles.title}>Analytics</Text>
+          <Text style={styles.subtitle}>Scores, trends, and risk patterns from incident data</Text>
         </View>
       </View>
 
       {isError ? <Text style={styles.warning}>Could not load analytics. Pull to retry.</Text> : null}
       {isLoading ? <ActivityIndicator color={COLORS.accent} style={styles.loader} /> : null}
 
+      <View style={styles.scorePanel}>
+        <View style={styles.scoreRing}>
+          <Text style={styles.scoreNumber}>{safetyScore}</Text>
+          <Text style={styles.scoreCaption}>SAFETY SCORE</Text>
+        </View>
+        <View style={styles.scoreCopy}>
+          <Text style={styles.scoreTitle}>
+            {safetyScore >= 85 ? 'Stable city signal' : safetyScore >= 70 ? 'Watch key hotspots' : 'Elevated risk window'}
+          </Text>
+          <Text style={styles.scoreBody}>
+            {topArea
+              ? `${topArea.area} leads the current risk picture with ${topArea.count} reports.`
+              : 'No hotspot data yet. New reports will build this score.'}
+          </Text>
+          <View style={styles.scoreChips}>
+            <View style={styles.scoreChip}>
+              <Text style={styles.scoreChipValue}>{todaysCount}</Text>
+              <Text style={styles.scoreChipLabel}>Today</Text>
+            </View>
+            <View style={styles.scoreChip}>
+              <Text style={styles.scoreChipValue}>{highRiskAreas}</Text>
+              <Text style={styles.scoreChipLabel}>High Risk</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+
       <View style={styles.metricsGrid}>
         <Metric label="TOTAL REPORTS" value={data.totalCrimes.toLocaleString()} icon="warning" note="Database records" />
         <Metric label="DAILY AVERAGE" value={String(avgDaily)} icon="trending-up" note="30-day window" />
         <Metric label="TOP CATEGORY" value={label(topCategory.name)} icon="emoji-events" note={`${topCategory.value} reports`} />
         <Metric label="HIGH-RISK AREAS" value={String(highRiskAreas)} icon="groups" note="HIGH / CRITICAL" />
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Area Risk Ranking</Text>
+        <Text style={styles.cardSubtitle}>Highest-volume neighborhoods from current records</Text>
+        {(data.crimesByArea.length ? data.crimesByArea.slice(0, 6) : [{ area: 'No area data', count: 0, riskLevel: 'LOW' }]).map(
+          (area, index) => (
+            <View key={`${area.area}-${index}`} style={styles.areaRow}>
+              <View style={styles.areaRank}>
+                <Text style={styles.areaRankText}>{index + 1}</Text>
+              </View>
+              <View style={styles.areaInfo}>
+                <Text style={styles.areaName}>{area.area}</Text>
+                <Text style={styles.areaMeta}>{area.count} reports</Text>
+              </View>
+              <View style={[styles.riskPill, { borderColor: severityColors[area.riskLevel as Severity] ?? COLORS.textMuted }]}>
+                <Text style={[styles.riskPillText, { color: severityColors[area.riskLevel as Severity] ?? COLORS.textMuted }]}>
+                  {area.riskLevel}
+                </Text>
+              </View>
+            </View>
+          )
+        )}
       </View>
 
       <View style={styles.card}>
@@ -203,6 +267,74 @@ const styles = StyleSheet.create({
   subtitle: { ...TYPOGRAPHY.body, color: COLORS.textMuted, marginTop: 4 },
   warning: { color: COLORS.warning, marginBottom: SPACING.md },
   loader: { marginBottom: SPACING.md },
+  scorePanel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    backgroundColor: 'rgba(0, 229, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 229, 255, 0.22)',
+    borderRadius: 28,
+    padding: SPACING.md,
+    marginBottom: SPACING.lg,
+    ...SHADOWS.card,
+  },
+  scoreRing: {
+    width: 118,
+    height: 118,
+    borderRadius: 59,
+    borderWidth: 8,
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scoreNumber: {
+    color: COLORS.text,
+    fontSize: 42,
+    fontWeight: '900',
+  },
+  scoreCaption: {
+    color: COLORS.accent,
+    fontSize: 9,
+    fontWeight: '900',
+    marginTop: -2,
+  },
+  scoreCopy: { flex: 1 },
+  scoreTitle: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  scoreBody: {
+    color: COLORS.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 5,
+  },
+  scoreChips: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  scoreChip: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: RADIUS.md,
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
+  scoreChipValue: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  scoreChipLabel: {
+    color: COLORS.textMuted,
+    fontSize: 10,
+    fontWeight: '800',
+    marginTop: 2,
+  },
   metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md, marginBottom: SPACING.lg },
   metricCard: {
     width: '47.8%',
@@ -229,6 +361,48 @@ const styles = StyleSheet.create({
   },
   cardTitle: { ...TYPOGRAPHY.h3, color: COLORS.text },
   cardSubtitle: { ...TYPOGRAPHY.caption, color: COLORS.textMuted, marginTop: 3, marginBottom: SPACING.md },
+  areaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  areaRank: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  areaRankText: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  areaInfo: { flex: 1 },
+  areaName: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  areaMeta: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  riskPill: {
+    borderWidth: 1,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  riskPillText: {
+    fontSize: 10,
+    fontWeight: '900',
+  },
   barList: { gap: SPACING.sm },
   barRow: { marginBottom: SPACING.md },
   barLabelRow: { flexDirection: 'row', justifyContent: 'space-between', gap: SPACING.md, marginBottom: SPACING.xs },

@@ -25,3 +25,7 @@ export const supabase = createClient(
     },
   }
 );
+
+export function isSupabaseConfigured(): boolean {
+  return Boolean(url && key);
+}

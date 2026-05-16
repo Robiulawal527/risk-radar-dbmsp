@@ -57,13 +57,18 @@ export default function CommunityScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <View style={styles.header}>
-        <Text style={styles.title}>Social Radar</Text>
-        <Text style={styles.subtitle}>Find trusted allies from the registered community</Text>
+      <View style={styles.headerPanel}>
+        <View style={styles.headerIcon}>
+          <MaterialIcons name="groups" size={26} color={COLORS.accent} />
+        </View>
+        <View style={styles.headerCopy}>
+          <Text style={styles.title}>Community</Text>
+          <Text style={styles.subtitle}>Find skilled helpers, top reporters, and verified records</Text>
+        </View>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>SEARCH BY SKILL</Text>
+      <View style={styles.searchCard}>
+        <Text style={styles.label}>FIND PEOPLE BY SKILL</Text>
         <View style={styles.searchRow}>
           <TextInput
             style={styles.searchInput}
@@ -90,8 +95,10 @@ export default function CommunityScreen() {
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <MaterialIcons name="people" size={20} color="#8b5cf6" />
-          <Text style={styles.sectionTitle}>People by Skill</Text>
+          <View style={styles.sectionIconPurple}>
+            <MaterialIcons name="people" size={18} color="#c4b5fd" />
+          </View>
+          <Text style={styles.sectionTitle}>Social Radar Matches</Text>
         </View>
         {matchMutation.isPending ? <Text style={styles.emptyText}>Searching...</Text> : null}
         {!matchMutation.isPending && matches.length === 0 ? (
@@ -146,7 +153,9 @@ export default function CommunityScreen() {
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <MaterialIcons name="emoji-events" size={20} color="#fbbf24" />
+          <View style={styles.sectionIconGold}>
+            <MaterialIcons name="emoji-events" size={18} color="#fbbf24" />
+          </View>
           <Text style={styles.sectionTitle}>Top Reporters</Text>
         </View>
         {rankingsError ? <Text style={styles.emptyText}>Could not load rankings.</Text> : null}
@@ -166,7 +175,9 @@ export default function CommunityScreen() {
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <MaterialIcons name="gavel" size={20} color={COLORS.danger} />
+          <View style={styles.sectionIconRed}>
+            <MaterialIcons name="gavel" size={18} color={COLORS.danger} />
+          </View>
           <Text style={styles.sectionTitle}>Criminal Records</Text>
         </View>
         {(rankings?.criminals ?? []).length === 0 && !rankingsError ? <Text style={styles.emptyText}>No criminal records yet.</Text> : null}
@@ -190,22 +201,45 @@ export default function CommunityScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
   content: { padding: SPACING.lg, paddingTop: 54, paddingBottom: 120 },
-  header: { marginBottom: SPACING.lg },
+  headerPanel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    backgroundColor: 'rgba(15, 23, 42, 0.88)',
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    borderRadius: 26,
+    padding: SPACING.md,
+    marginBottom: SPACING.lg,
+    ...SHADOWS.card,
+  },
+  headerIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0, 229, 255, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerCopy: { flex: 1 },
   title: { ...TYPOGRAPHY.h1, color: COLORS.text },
-  subtitle: { ...TYPOGRAPHY.body, color: COLORS.textMuted, marginTop: 5 },
-  card: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.lg, ...SHADOWS.card },
+  subtitle: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19, marginTop: 4 },
+  searchCard: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: 22, padding: SPACING.md, marginBottom: SPACING.xl, ...SHADOWS.card },
   label: { color: COLORS.textMuted, fontSize: 11, fontWeight: '900', marginBottom: SPACING.sm },
   searchRow: { flexDirection: 'row', gap: SPACING.sm },
-  searchInput: { flex: 1, backgroundColor: '#111827', borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: RADIUS.sm, color: COLORS.text, paddingHorizontal: SPACING.md, minHeight: 48 },
-  searchButton: { width: 48, height: 48, borderRadius: RADIUS.sm, backgroundColor: COLORS.accent, alignItems: 'center', justifyContent: 'center' },
+  searchInput: { flex: 1, backgroundColor: '#111827', borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: RADIUS.full, color: COLORS.text, paddingHorizontal: SPACING.md, minHeight: 48 },
+  searchButton: { width: 48, height: 48, borderRadius: 24, backgroundColor: COLORS.accent, alignItems: 'center', justifyContent: 'center' },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: SPACING.sm },
   skillChip: { borderWidth: 1, borderColor: COLORS.cardBorder, backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.full },
   skillText: { color: COLORS.text, fontSize: 12, fontWeight: '700' },
   section: { marginBottom: SPACING.xl },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md },
+  sectionIconPurple: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(139,92,246,0.16)', alignItems: 'center', justifyContent: 'center' },
+  sectionIconGold: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(251,191,36,0.14)', alignItems: 'center', justifyContent: 'center' },
+  sectionIconRed: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,46,99,0.14)', alignItems: 'center', justifyContent: 'center' },
   sectionTitle: { ...TYPOGRAPHY.h3, color: COLORS.text },
   emptyText: { color: COLORS.textMuted, textAlign: 'center', paddingVertical: SPACING.lg },
-  matchCard: { backgroundColor: COLORS.card, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 1, borderColor: COLORS.cardBorder, ...SHADOWS.card },
+  matchCard: { backgroundColor: COLORS.card, borderRadius: 22, padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 1, borderColor: COLORS.cardBorder, ...SHADOWS.card },
   matchHeader: { flexDirection: 'row', alignItems: 'center' },
   avatar: { width: 54, height: 54, borderRadius: RADIUS.md, backgroundColor: '#8b5cf6', justifyContent: 'center', alignItems: 'center' },
   avatarText: { color: '#fff', fontSize: 22, fontWeight: '900' },
@@ -224,13 +258,13 @@ const styles = StyleSheet.create({
   contactDisabledText: { color: COLORS.textMuted },
   emailButton: { flex: 1, borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: RADIUS.sm, paddingVertical: 11, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
   emailButtonText: { color: COLORS.text, fontWeight: '800' },
-  championCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.card, padding: SPACING.md, borderRadius: RADIUS.sm, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.cardBorder },
+  championCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.card, padding: SPACING.md, borderRadius: 18, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.cardBorder },
   rankBadge: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#fbbf24', justifyContent: 'center', alignItems: 'center' },
   rankText: { color: COLORS.bg, fontWeight: '900', fontSize: 12 },
   rankInfo: { flex: 1, marginLeft: SPACING.md },
   championName: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
   championStats: { color: COLORS.textMuted, fontSize: 11, marginTop: 2 },
-  criminalCard: { backgroundColor: COLORS.card, padding: SPACING.md, borderRadius: RADIUS.sm, marginBottom: SPACING.sm, borderLeftWidth: 4, borderLeftColor: COLORS.danger },
+  criminalCard: { backgroundColor: COLORS.card, padding: SPACING.md, borderRadius: 18, marginBottom: SPACING.sm, borderLeftWidth: 4, borderLeftColor: COLORS.danger },
   criminalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: SPACING.sm },
   criminalName: { color: COLORS.text, fontSize: 15, fontWeight: '800', flex: 1 },
   dangerBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
