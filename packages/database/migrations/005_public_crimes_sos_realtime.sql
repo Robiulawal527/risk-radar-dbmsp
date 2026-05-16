@@ -1,6 +1,8 @@
 -- Supabase public mobile tables for direct Expo client writes and realtime map updates.
 -- Apply in Supabase SQL editor, or with: psql "$DATABASE_URL" -f packages/database/migrations/005_public_crimes_sos_realtime.sql
 
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
 CREATE TABLE IF NOT EXISTS public.crimes (
   id bigserial PRIMARY KEY,
   user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -40,6 +42,20 @@ ALTER TABLE public.crimes ADD COLUMN IF NOT EXISTS date_time timestamptz NOT NUL
 ALTER TABLE public.crimes ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
 ALTER TABLE public.crimes ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'crimes'
+      AND column_name = 'id'
+      AND udt_name = 'uuid'
+  ) THEN
+    ALTER TABLE public.crimes ALTER COLUMN id SET DEFAULT gen_random_uuid();
+  END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_public_crimes_created_at ON public.crimes (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_public_crimes_location ON public.crimes (latitude, longitude);
 CREATE INDEX IF NOT EXISTS idx_public_crimes_user_id ON public.crimes (user_id);
@@ -51,7 +67,9 @@ CREATE TABLE IF NOT EXISTS public.sos_alerts (
   latitude double precision NOT NULL,
   longitude double precision NOT NULL,
   message text,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  resolved_at timestamptz
 );
 
 ALTER TABLE public.sos_alerts ADD COLUMN IF NOT EXISTS user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL;
@@ -60,6 +78,22 @@ ALTER TABLE public.sos_alerts ADD COLUMN IF NOT EXISTS latitude double precision
 ALTER TABLE public.sos_alerts ADD COLUMN IF NOT EXISTS longitude double precision;
 ALTER TABLE public.sos_alerts ADD COLUMN IF NOT EXISTS message text;
 ALTER TABLE public.sos_alerts ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE public.sos_alerts ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE public.sos_alerts ADD COLUMN IF NOT EXISTS resolved_at timestamptz;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'sos_alerts'
+      AND column_name = 'id'
+      AND udt_name = 'uuid'
+  ) THEN
+    ALTER TABLE public.sos_alerts ALTER COLUMN id SET DEFAULT gen_random_uuid();
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_public_sos_alerts_created_at ON public.sos_alerts (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_public_sos_alerts_status ON public.sos_alerts (status);
@@ -96,6 +130,21 @@ CREATE POLICY sos_alerts_insert_own
   FOR INSERT
   TO authenticated
   WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS sos_alerts_update_own ON public.sos_alerts;
+CREATE POLICY sos_alerts_update_own
+  ON public.sos_alerts
+  FOR UPDATE
+  TO authenticated
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS sos_alerts_delete_own ON public.sos_alerts;
+CREATE POLICY sos_alerts_delete_own
+  ON public.sos_alerts
+  FOR DELETE
+  TO authenticated
+  USING (user_id = auth.uid());
 
 ALTER TABLE public.crimes REPLICA IDENTITY FULL;
 ALTER TABLE public.sos_alerts REPLICA IDENTITY FULL;

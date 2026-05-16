@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Clock, Loader2, MapPin, RefreshCw, ShieldAlert, WifiOff } from 'lucide-react';
+import { AlertCircle, Clock, Loader2, MapPin, RefreshCw, ShieldAlert, Trash2, WifiOff } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 
@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
-import { createSosAlertInSupabase, fetchMySosAlertsFromSupabase } from '@/lib/sos-alerts';
+import { createSosAlertInSupabase, fetchMySosAlertsFromSupabase, resolveSosAlertInSupabase } from '@/lib/sos-alerts';
 import { SOSStatus } from '@/lib/types';
 import type { SOSRequest } from '@/lib/types';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
@@ -46,10 +46,12 @@ const GEOLOCATION_OPTIONS: PositionOptions = {
 const CREATE_SOS_ENDPOINTS = ['/sos', '/sos/'] as const;
 const GET_MY_SOS_ENDPOINTS = ['/sos/user', '/sos/my', '/sos/me'] as const;
 
+/** Checks browser availability before touching window, navigator, or localStorage in a client component. */
 function isBrowser() {
   return typeof window !== 'undefined';
 }
 
+/** Converts API, Supabase, and browser errors into messages people can act on. */
 function getErrorMessage(error: unknown) {
   if (typeof error === 'object' && error !== null && 'response' in error) {
     const maybeAxiosError = error as {
@@ -78,6 +80,7 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Something went wrong.';
 }
 
+/** Shortens stored sync errors so pending local SOS cards stay readable. */
 function formatSyncError(message?: string) {
   if (!message) return 'server unavailable';
   if (/schema cache/i.test(message) || /could not find the table/i.test(message)) {
@@ -86,6 +89,7 @@ function formatSyncError(message?: string) {
   return message;
 }
 
+/** Opens the local phone dialer for Bangladesh emergency services when the browser supports tel links. */
 function callEmergencyServices() {
   if (!isBrowser()) return;
   const link = document.createElement('a');
@@ -96,6 +100,7 @@ function callEmergencyServices() {
   link.remove();
 }
 
+/** Explains browser geolocation failures with permission/GPS-specific guidance. */
 function getGeolocationErrorMessage(error: unknown) {
   if (!isBrowser() || !('geolocation' in navigator)) {
     return 'Location is not supported on this browser/device.';
@@ -120,6 +125,7 @@ function getGeolocationErrorMessage(error: unknown) {
   return getErrorMessage(error);
 }
 
+/** Reads one high-accuracy browser GPS fix for SOS creation. */
 function getCurrentCoordinates() {
   return new Promise<Coordinates>((resolve, reject) => {
     if (!isBrowser() || !('geolocation' in navigator)) {
@@ -141,10 +147,12 @@ function getCurrentCoordinates() {
   });
 }
 
+/** Formats coordinates consistently for remote payloads and local pending SOS records. */
 function formatCoordinates({ latitude, longitude }: Coordinates) {
   return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
 }
 
+/** Formats SOS timestamps for recent activity cards. */
 function formatDateTime(value?: string | Date | null) {
   if (!value) return 'Unknown time';
 
@@ -157,6 +165,7 @@ function formatDateTime(value?: string | Date | null) {
   }).format(date);
 }
 
+/** Chooses the badge variant from status while showing local-only SOS entries as pending. */
 function getStatusVariant(status: SOSRequest['status'], isLocalOnly?: boolean) {
   if (isLocalOnly) return 'secondary' as const;
   if (status === SOSStatus.ACTIVE) return 'destructive' as const;
@@ -164,6 +173,7 @@ function getStatusVariant(status: SOSRequest['status'], isLocalOnly?: boolean) {
   return 'secondary' as const;
 }
 
+/** Reads locally saved pending SOS rows and safely ignores corrupt localStorage JSON. */
 function readLocalSOSRequests(): LocalSOSRequest[] {
   if (!isBrowser()) return [];
 
@@ -176,21 +186,25 @@ function readLocalSOSRequests(): LocalSOSRequest[] {
   }
 }
 
+/** Persists the pending SOS queue used when network or Supabase writes fail. */
 function writeLocalSOSRequests(requests: LocalSOSRequest[]) {
   if (!isBrowser()) return;
   window.localStorage.setItem(LOCAL_SOS_KEY, JSON.stringify(requests));
 }
 
+/** Upserts a pending local SOS without duplicating an existing id. */
 function saveLocalSOSRequest(request: LocalSOSRequest) {
   const existing = readLocalSOSRequests();
   const next = [request, ...existing.filter((item) => item.id !== request.id)];
   writeLocalSOSRequests(next);
 }
 
+/** Removes a local-only SOS after delete or a successful server sync. */
 function removeLocalSOSRequest(id: string) {
   writeLocalSOSRequests(readLocalSOSRequests().filter((item) => item.id !== id));
 }
 
+/** Tries compatible backend routes in order so old deployments and the local API both work. */
 async function requestWithFallback<T>(
   endpoints: readonly string[],
   request: (endpoint: string) => Promise<T>
@@ -210,6 +224,7 @@ async function requestWithFallback<T>(
   throw lastError instanceof Error ? lastError : new Error('Request failed.');
 }
 
+/** Normalizes list responses from Express, Next proxy, or direct arrays into a SOSRequest array. */
 function normalizeRequests(payload: ApiResponse<SOSRequest[]> | SOSRequest[]) {
   if (Array.isArray(payload)) return payload;
   if (payload.success === false) {
@@ -218,6 +233,16 @@ function normalizeRequests(payload: ApiResponse<SOSRequest[]> | SOSRequest[]) {
   return Array.isArray(payload.data) ? payload.data : [];
 }
 
+/** Normalizes one SOS mutation response regardless of whether the API wraps it in { success, data }. */
+function normalizeRequest(payload: ApiResponse<SOSRequest> | SOSRequest) {
+  if ('success' in payload && payload.success === false) {
+    throw new Error(payload.message || payload.error || 'Could not update SOS request.');
+  }
+  if ('data' in payload && payload.data) return payload.data;
+  return payload as SOSRequest;
+}
+
+/** Builds the backend create payload from the current GPS fix. */
 function buildSOSPayload(coordinates: Coordinates) {
   return {
     location: {
@@ -231,6 +256,7 @@ function buildSOSPayload(coordinates: Coordinates) {
   };
 }
 
+/** Creates a local pending SOS when remote creation fails, keeping emergency intent visible. */
 function buildLocalRequest(coordinates: Coordinates, syncError: string): LocalSOSRequest {
   const createdAt = new Date().toISOString();
 
@@ -260,10 +286,12 @@ export default function SOSPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const [confirming, setConfirming] = useState(false);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [localRequests, setLocalRequests] = useState<LocalSOSRequest[]>(() =>
     readLocalSOSRequests()
   );
 
+  /** Reloads pending local SOS rows after create/delete actions mutate localStorage. */
   const refreshLocalRequests = useCallback(() => {
     setLocalRequests(readLocalSOSRequests());
   }, []);
@@ -316,12 +344,72 @@ export default function SOSPage() {
     [requests]
   );
 
+  /** Resolves synced SOS rows or removes local pending rows, then refreshes every active SOS view. */
+  const resolveSOS = useMutation({
+    mutationFn: async (request: LocalSOSRequest) => {
+      const isLocalOnly = request.isLocalOnly || request.id.startsWith('local-');
+      if (isLocalOnly) {
+        removeLocalSOSRequest(request.id);
+        return { request: { ...request, status: SOSStatus.RESOLVED }, localOnly: true };
+      }
+
+      if (!user?.id) throw new Error('Sign in again to update this SOS.');
+
+      let directError: unknown;
+      const direct = isSupabaseConfigured()
+        ? await resolveSosAlertInSupabase(request.id, user.id).catch((error) => {
+            directError = error;
+            return null;
+          })
+        : null;
+      if (direct) return { request: direct, localOnly: false };
+
+      const encodedId = encodeURIComponent(request.id);
+      let resolved: SOSRequest;
+      try {
+        resolved = await requestWithFallback(
+          [`/sos/${encodedId}/status`, `/sos/${encodedId}`],
+          async (endpoint) => {
+            const res = endpoint.endsWith('/status')
+              ? await api.put<ApiResponse<SOSRequest> | SOSRequest>(endpoint, { status: SOSStatus.RESOLVED })
+              : await api.delete<ApiResponse<SOSRequest> | SOSRequest>(endpoint);
+            return normalizeRequest(res.data);
+          }
+        );
+      } catch (apiError) {
+        throw directError instanceof Error ? directError : apiError;
+      }
+      return { request: resolved, localOnly: false };
+    },
+    onMutate: (request) => {
+      setResolvingId(request.id);
+    },
+    onSuccess: async ({ localOnly }) => {
+      refreshLocalRequests();
+      await queryClient.invalidateQueries({ queryKey: ['sos-my'] });
+      await queryClient.invalidateQueries({ queryKey: ['active-sos-alerts'] });
+      toast.success(localOnly ? 'Pending SOS deleted' : 'SOS resolved', {
+        description: 'It will no longer show as a live SOS alert.',
+      });
+    },
+    onError: (err) => {
+      toast.error('Could not delete SOS', {
+        description: getErrorMessage(err),
+      });
+    },
+    onSettled: () => {
+      setResolvingId(null);
+    },
+  });
+
+  /** Sends an SOS through Supabase first, backend API second, and local pending storage as final fallback. */
   const sendSOS = useMutation({
     mutationFn: async () => {
       const coordinates = await getCurrentCoordinates();
       const payload = buildSOSPayload(coordinates);
 
       try {
+        let directError: unknown;
         const direct =
           user?.id && isSupabaseConfigured()
             ? await createSosAlertInSupabase({
@@ -330,22 +418,30 @@ export default function SOSPage() {
                 longitude: coordinates.longitude,
                 accuracy: coordinates.accuracy,
                 message: 'Emergency assistance requested',
+              }).catch((error) => {
+                directError = error;
+                return null;
               })
             : null;
 
-        const created =
-          direct ??
-          (await requestWithFallback(CREATE_SOS_ENDPOINTS, async (endpoint) => {
-            const res = await api.post<ApiResponse<SOSRequest> | SOSRequest>(endpoint, payload);
-            const body = res.data;
+        let created = direct;
+        if (!created) {
+          try {
+            created = await requestWithFallback(CREATE_SOS_ENDPOINTS, async (endpoint) => {
+              const res = await api.post<ApiResponse<SOSRequest> | SOSRequest>(endpoint, payload);
+              const body = res.data;
 
-            if ('success' in body && body.success === false) {
-              throw new Error(body.message || body.error || 'SOS request could not be created.');
-            }
+              if ('success' in body && body.success === false) {
+                throw new Error(body.message || body.error || 'SOS request could not be created.');
+              }
 
-            if ('data' in body && body.data) return body.data;
-            return body as SOSRequest;
-          }));
+              if ('data' in body && body.data) return body.data;
+              return body as SOSRequest;
+            });
+          } catch (apiError) {
+            throw directError instanceof Error ? directError : apiError;
+          }
+        }
 
         return { request: created, savedLocally: false };
       } catch (error) {
@@ -384,6 +480,7 @@ export default function SOSPage() {
     },
   });
 
+  /** Handles the two-step SOS confirmation so accidental clicks do not create emergency requests. */
   const handlePrimaryAction = () => {
     if (sendSOS.isPending) return;
 
@@ -399,6 +496,21 @@ export default function SOSPage() {
     callEmergencyServices();
   };
 
+  /** Confirms and resolves a visible active SOS so it disappears from live maps without deleting history. */
+  const handleDeleteSOS = (request: LocalSOSRequest) => {
+    if (resolveSOS.isPending) return;
+    const isLocalOnly = request.isLocalOnly || request.id.startsWith('local-');
+    const confirmed =
+      !isBrowser() ||
+      window.confirm(
+        isLocalOnly
+          ? 'Delete this pending local SOS from this browser?'
+          : 'Mark this SOS as resolved and remove it from live maps?'
+      );
+    if (confirmed) resolveSOS.mutate(request);
+  };
+
+  /** Refreshes remote SOS history and pending local records together. */
   const handleRefresh = async () => {
     refreshLocalRequests();
     await refetch();
@@ -423,9 +535,9 @@ export default function SOSPage() {
 
       <Card className="glass-panel border-red-500/20 p-6 text-center sm:p-12">
         {activeRequest ? (
-          <div className="mx-auto mb-6 flex max-w-xl items-start gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-left text-sm text-red-100">
+          <div className="mx-auto mb-6 flex max-w-xl flex-col gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-left text-sm text-red-100 sm:flex-row sm:items-start">
             <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-red-300" aria-hidden="true" />
-            <div>
+            <div className="min-w-0 flex-1">
               <div className="font-semibold">
                 {'isLocalOnly' in activeRequest && activeRequest.isLocalOnly
                   ? 'SOS is pending server sync.'
@@ -436,6 +548,21 @@ export default function SOSPage() {
                 unless your location changed or this is a new emergency.
               </div>
             </div>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={() => handleDeleteSOS(activeRequest as LocalSOSRequest)}
+              disabled={resolvingId === activeRequest.id}
+              className="shrink-0"
+            >
+              {resolvingId === activeRequest.id ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
+              )}
+              Delete SOS
+            </Button>
           </div>
         ) : null}
 
@@ -510,6 +637,7 @@ export default function SOSPage() {
           {requests.length > 0 ? (
             requests.map((request, index) => {
               const isLocalOnly = 'isLocalOnly' in request && Boolean(request.isLocalOnly);
+              const canDelete = request.status === SOSStatus.ACTIVE || isLocalOnly;
 
               return (
                 <motion.div
@@ -541,9 +669,27 @@ export default function SOSPage() {
                     </div>
                   </div>
 
-                  <Badge variant={getStatusVariant(request.status, isLocalOnly)}>
-                    {isLocalOnly ? 'PENDING' : request.status}
-                  </Badge>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Badge variant={getStatusVariant(request.status, isLocalOnly)}>
+                      {isLocalOnly ? 'PENDING' : request.status}
+                    </Badge>
+                    {canDelete ? (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDeleteSOS(request as LocalSOSRequest)}
+                        disabled={resolvingId === request.id}
+                      >
+                        {resolvingId === request.id ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
+                        )}
+                        Delete
+                      </Button>
+                    ) : null}
+                  </div>
                 </motion.div>
               );
             })

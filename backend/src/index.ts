@@ -7,6 +7,7 @@ import { SOSStatus } from '@risk-radar/types';
 import { createApp } from './app.js';
 import * as sosService from './services/sos.js';
 
+/** Boots the Express API and Socket.IO bridge after confirming the database is reachable. */
 async function main() {
   await pool.query('SELECT 1');
   console.log('✅ Database connected');
@@ -37,9 +38,9 @@ async function main() {
 
     socket.on(
       'sos:update',
-      async (data: { id: string; status: SOSStatus }, callback?: (r: unknown) => void) => {
+      async (data: { id: string; userId: string; status: SOSStatus }, callback?: (r: unknown) => void) => {
         try {
-          const sosRequest = await sosService.updateSOSStatus(data.id, data.status);
+          const sosRequest = await sosService.updateSOSStatus(data.id, data.userId, data.status);
           io.emit('sos:updated', sosRequest);
           callback?.({ success: true, data: sosRequest });
         } catch (e: unknown) {

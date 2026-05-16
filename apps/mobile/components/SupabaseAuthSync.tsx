@@ -68,7 +68,7 @@ export function SupabaseAuthSync() {
       await useAuthStore.getState().clearAuth();
     };
 
-    unsubHydration = useAuthStore.persist.onFinishHydration(() => {
+    const reconcileSession = () => {
       void (async () => {
         const { data } = await supabase.auth.getSession();
         if (data.session?.user) {
@@ -77,7 +77,13 @@ export function SupabaseAuthSync() {
           await clearIfSignedOut();
         }
       })();
-    });
+    };
+
+    if (useAuthStore.persist.hasHydrated()) {
+      reconcileSession();
+    } else {
+      unsubHydration = useAuthStore.persist.onFinishHydration(reconcileSession);
+    }
 
     const {
       data: { subscription },

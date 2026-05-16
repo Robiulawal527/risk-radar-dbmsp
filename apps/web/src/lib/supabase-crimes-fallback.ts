@@ -190,7 +190,23 @@ function omitUndefined(row: ReportRow): ReportRow {
   return Object.fromEntries(Object.entries(row).filter(([, value]) => value !== undefined));
 }
 
+function uuidV4(): string {
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+      const value = Math.floor(Math.random() * 16);
+      const next = char === 'x' ? value : (value & 0x3) | 0x8;
+      return next.toString(16);
+    })
+  );
+}
+
+function withOptionalUuidId(row: ReportRow, reportId: string): ReportRow[] {
+  return [omitUndefined({ id: reportId, ...row }), row];
+}
+
 function reportInsertAttempts(camel: ReportRow): ReportRow[] {
+  const reportId = uuidV4();
   const crimesTable = omitUndefined({
     user_id: camel.userId,
     type: camel.type,
@@ -270,6 +286,25 @@ function reportInsertAttempts(camel: ReportRow): ReportRow[] {
     created_at: camel.createdAt,
   });
 
+  const crimesTableMinimal = omitUndefined({
+    user_id: camel.userId,
+    type: camel.type,
+    category: camel.category,
+    title: camel.title,
+    description: camel.description,
+    latitude: camel.latitude,
+    longitude: camel.longitude,
+    address: camel.address,
+    area: camel.area,
+    district: camel.district,
+    division: camel.division,
+    severity: camel.severity,
+    reported_by: camel.reportedBy,
+    status: camel.status,
+    date_time: camel.dateTime,
+    created_at: camel.createdAt,
+  });
+
   const appSchemaWithoutUser = omitUndefined({
     type: camel.type,
     category: camel.category,
@@ -292,14 +327,28 @@ function reportInsertAttempts(camel: ReportRow): ReportRow[] {
     updatedAt: camel.updatedAt,
   });
 
-  const attempts = [crimesTable, camel, snake, common, minimal, appSchemaWithoutUser];
+  const attempts = [
+    ...withOptionalUuidId(crimesTable, reportId),
+    ...withOptionalUuidId(crimesTableMinimal, reportId),
+    ...withOptionalUuidId(snake, reportId),
+    ...withOptionalUuidId(common, reportId),
+    ...withOptionalUuidId(minimal, reportId),
+    omitUndefined({ id: reportId, ...camel }),
+    appSchemaWithoutUser,
+  ];
   const seen = new Set<string>();
   return attempts.filter((row) => {
-    const key = JSON.stringify(Object.keys(row).sort());
+    const key = JSON.stringify(row);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+}
+
+function isRetryablePayloadError(message: string): boolean {
+  return /schema cache|column .* does not exist|could not find .* column|invalid input syntax for type bigint|null value in column "id"|violates not-null constraint/i.test(
+    message
+  );
 }
 
 async function insertReport(supabase: SupabaseClient, table: string, payload: ReportRow): Promise<ReportRow> {
@@ -307,14 +356,10 @@ async function insertReport(supabase: SupabaseClient, table: string, payload: Re
   let lastError = 'Unknown insert error';
 
   for (const row of attempts) {
-    const { data, error } = await supabase.from(table).insert(row).select('*').maybeSingle();
-    if (!error) return ((data as ReportRow | null) ?? row) as ReportRow;
+    const { error } = await supabase.from(table).insert(row);
+    if (!error) return row;
     lastError = error.message;
-    if (!isSchemaShapeError(error.message)) {
-      const fallback = await supabase.from(table).insert(row);
-      if (!fallback.error) return row;
-      lastError = fallback.error.message;
-    }
+    if (!isSchemaShapeError(error.message) && !isRetryablePayloadError(error.message)) break;
   }
 
   throw new Error(lastError);
@@ -322,7 +367,7 @@ async function insertReport(supabase: SupabaseClient, table: string, payload: Re
 
 function mapCrimeRow(row: Record<string, unknown>) {
   return {
-    id: row.id,
+    id: row.id ?? `local-${Date.now()}`,
     type: row.type,
     category: row.category ?? row.type,
     title: row.title,

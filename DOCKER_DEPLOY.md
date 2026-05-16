@@ -49,7 +49,7 @@ Watch the Expo QR code:
 docker compose --env-file .env.docker logs -f mobile
 ```
 
-The Docker env example defaults to `EXPO_HOST=tunnel` because LAN mode usually advertises a private container IP that phones cannot reach. If you prefer LAN mode, set `EXPO_HOST=lan` and `REACT_NATIVE_PACKAGER_HOSTNAME` to your computer's LAN IP before starting the mobile service.
+The Docker env example defaults to `EXPO_HOST=tunnel` because LAN mode usually advertises a private container IP that phones cannot reach. If the tunnel service times out, the mobile container automatically falls back to LAN mode instead of crashing. For reliable LAN fallback, set `REACT_NATIVE_PACKAGER_HOSTNAME` to your computer's LAN IP before starting the mobile service.
 
 ## 3. Run the full stack with backend
 

@@ -5,19 +5,45 @@ import { CrimeType, NotificationType, Severity, SOSStatus, type User } from '@ri
 import { supabase, isSupabaseConfigured } from './supabase';
 
 const SEEN_KEY = 'risk-radar:seen-nearby-notifications';
+const NOTIFICATION_CHANNEL_ID = 'nearby-alerts';
 const DEFAULT_RADIUS_KM = Number(process.env.EXPO_PUBLIC_NEARBY_ALERT_RADIUS_KM ?? '10') || 10;
+const MAX_REALTIME_RETRIES = 5;
 
 type RealtimeRow = Record<string, unknown>;
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+let notificationHandlerConfigured = false;
+
+function getErrorMessage(error: unknown): string {
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String((error as { message?: unknown }).message ?? '');
+  }
+  return error instanceof Error ? error.message : String(error ?? 'Unknown error');
+}
+
+function logNotificationWarning(message: string, error?: unknown) {
+  const details = error ? ` ${getErrorMessage(error)}` : '';
+  console.warn(`[Risk Radar] ${message}.${details}`);
+}
+
+function configureNotificationHandler() {
+  if (notificationHandlerConfigured) return;
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+    notificationHandlerConfigured = true;
+  } catch (error) {
+    logNotificationWarning('Local notifications are not available in this runtime', error);
+  }
+}
+
+configureNotificationHandler();
 
 function getString(row: RealtimeRow, ...keys: string[]): string | undefined {
   for (const key of keys) {
@@ -57,119 +83,218 @@ function userAlertPoint(user: User | null) {
 }
 
 async function seen(id: string): Promise<boolean> {
-  const raw = await AsyncStorage.getItem(SEEN_KEY);
-  const ids = raw ? (JSON.parse(raw) as string[]) : [];
-  if (ids.includes(id)) return true;
-  const next = [id, ...ids].slice(0, 200);
-  await AsyncStorage.setItem(SEEN_KEY, JSON.stringify(next));
+  try {
+    const raw = await AsyncStorage.getItem(SEEN_KEY);
+    let ids: string[] = [];
+
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        ids = Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [];
+      } catch {
+        await AsyncStorage.removeItem(SEEN_KEY).catch(() => {});
+      }
+    }
+
+    if (ids.includes(id)) return true;
+    const next = [id, ...ids].slice(0, 200);
+    await AsyncStorage.setItem(SEEN_KEY, JSON.stringify(next));
+  } catch (error) {
+    logNotificationWarning('Could not update notification history', error);
+  }
   return false;
 }
 
-export async function requestNearbyNotificationPermission(): Promise<boolean> {
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('nearby-alerts', {
-      name: 'Nearby safety alerts',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 120, 250],
-      lightColor: '#FF2E63',
-      sound: 'default',
-    });
-  }
-
-  const current = await Notifications.getPermissionsAsync();
-  if (current.granted || current.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL) {
+async function scheduleNearbyNotification(request: Parameters<typeof Notifications.scheduleNotificationAsync>[0]) {
+  try {
+    configureNotificationHandler();
+    await Notifications.scheduleNotificationAsync(request);
     return true;
+  } catch (error) {
+    logNotificationWarning('Could not schedule local notification', error);
+    return false;
   }
-  const requested = await Notifications.requestPermissionsAsync();
-  return requested.granted || requested.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+}
+
+export async function requestNearbyNotificationPermission(): Promise<boolean> {
+  if (Platform.OS === 'web') return false;
+
+  try {
+    configureNotificationHandler();
+
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNEL_ID, {
+        name: 'Nearby safety alerts',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 120, 250],
+        lightColor: '#FF2E63',
+        sound: 'default',
+      });
+    }
+
+    const current = await Notifications.getPermissionsAsync();
+    if (current.granted || current.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL) {
+      return true;
+    }
+    const requested = await Notifications.requestPermissionsAsync();
+    return requested.granted || requested.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+  } catch (error) {
+    logNotificationWarning('Could not request notification permission', error);
+    return false;
+  }
 }
 
 export async function notifyNearbyCrime(row: RealtimeRow, user: User | null, radiusKm = DEFAULT_RADIUS_KM) {
-  const alertPoint = userAlertPoint(user);
-  const latitude = getNumber(row, 'latitude', 'lat');
-  const longitude = getNumber(row, 'longitude', 'lng', 'lon');
-  const reporterId = getString(row, 'user_id', 'userId', 'reporter_id');
-  const id = getString(row, 'id') ?? `${latitude}:${longitude}:${getString(row, 'created_at', 'createdAt')}`;
-  if (!alertPoint || latitude === undefined || longitude === undefined || reporterId === user?.id) return;
+  try {
+    const alertPoint = userAlertPoint(user);
+    const latitude = getNumber(row, 'latitude', 'lat');
+    const longitude = getNumber(row, 'longitude', 'lng', 'lon');
+    const reporterId = getString(row, 'user_id', 'userId', 'reporter_id');
+    const id = getString(row, 'id') ?? `${latitude}:${longitude}:${getString(row, 'created_at', 'createdAt')}`;
+    if (!alertPoint || latitude === undefined || longitude === undefined || reporterId === user?.id) return;
 
-  const distance = distanceKm(alertPoint, { latitude, longitude });
-  if (distance > radiusKm || (await seen(`crime:${id}`))) return;
-  const allowed = await requestNearbyNotificationPermission();
-  if (!allowed) return;
+    const distance = distanceKm(alertPoint, { latitude, longitude });
+    if (distance > radiusKm || (await seen(`crime:${id}`))) return;
+    const allowed = await requestNearbyNotificationPermission();
+    if (!allowed) return;
 
-  const title = getString(row, 'title') ?? 'New nearby incident';
-  const area = getString(row, 'area', 'district', 'address') ?? 'near your alert area';
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'New crime reported nearby',
-      body: `${title} in ${area} (${distance.toFixed(1)} km away).`,
-      sound: 'default',
-      data: {
-        type: NotificationType.CRIME_ALERT,
-        id,
-        latitude,
-        longitude,
-        distanceKm: distance,
-        crimeType: getString(row, 'type') ?? CrimeType.OTHER,
-        severity: getString(row, 'severity') ?? Severity.MEDIUM,
+    const title = getString(row, 'title') ?? 'New nearby incident';
+    const area = getString(row, 'area', 'district', 'address') ?? 'near your alert area';
+    await scheduleNearbyNotification({
+      content: {
+        title: 'New crime reported nearby',
+        body: `${title} in ${area} (${distance.toFixed(1)} km away).`,
+        sound: 'default',
+        data: {
+          type: NotificationType.CRIME_ALERT,
+          id,
+          latitude,
+          longitude,
+          distanceKm: distance,
+          crimeType: getString(row, 'type') ?? CrimeType.OTHER,
+          severity: getString(row, 'severity') ?? Severity.MEDIUM,
+        },
       },
-    },
-    trigger: null,
-  });
+      trigger: null,
+    });
+  } catch (error) {
+    logNotificationWarning('Nearby crime notification failed', error);
+  }
 }
 
 export async function notifyNearbySos(row: RealtimeRow, user: User | null, radiusKm = DEFAULT_RADIUS_KM) {
-  const alertPoint = userAlertPoint(user);
-  const latitude = getNumber(row, 'latitude', 'lat');
-  const longitude = getNumber(row, 'longitude', 'lng', 'lon');
-  const senderId = getString(row, 'user_id', 'userId');
-  const status = getString(row, 'status')?.toUpperCase() ?? SOSStatus.ACTIVE;
-  const id = getString(row, 'id') ?? `${latitude}:${longitude}:${getString(row, 'created_at', 'createdAt')}`;
-  if (!alertPoint || latitude === undefined || longitude === undefined || senderId === user?.id) return;
-  if (status !== SOSStatus.ACTIVE) return;
+  try {
+    const alertPoint = userAlertPoint(user);
+    const latitude = getNumber(row, 'latitude', 'lat');
+    const longitude = getNumber(row, 'longitude', 'lng', 'lon');
+    const senderId = getString(row, 'user_id', 'userId');
+    const status = getString(row, 'status')?.toUpperCase() ?? SOSStatus.ACTIVE;
+    const id = getString(row, 'id') ?? `${latitude}:${longitude}:${getString(row, 'created_at', 'createdAt')}`;
+    if (!alertPoint || latitude === undefined || longitude === undefined || senderId === user?.id) return;
+    if (status !== SOSStatus.ACTIVE) return;
 
-  const distance = distanceKm(alertPoint, { latitude, longitude });
-  if (distance > radiusKm || (await seen(`sos:${id}`))) return;
-  const allowed = await requestNearbyNotificationPermission();
-  if (!allowed) return;
+    const distance = distanceKm(alertPoint, { latitude, longitude });
+    if (distance > radiusKm || (await seen(`sos:${id}`))) return;
+    const allowed = await requestNearbyNotificationPermission();
+    if (!allowed) return;
 
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'Live SOS near you',
-      body: `Someone sent an SOS ${distance.toFixed(1)} km away. Tap the Radar map to see the live location.`,
-      sound: 'default',
-      priority: Notifications.AndroidNotificationPriority.MAX,
-      data: {
-        type: NotificationType.SOS_UPDATE,
-        id,
-        latitude,
-        longitude,
-        distanceKm: distance,
-        status,
-        liveLocation: true,
+    await scheduleNearbyNotification({
+      content: {
+        title: 'Live SOS near you',
+        body: `Someone sent an SOS ${distance.toFixed(1)} km away. Tap the Radar map to see the live location.`,
+        sound: 'default',
+        priority: Notifications.AndroidNotificationPriority.MAX,
+        data: {
+          type: NotificationType.SOS_UPDATE,
+          id,
+          latitude,
+          longitude,
+          distanceKm: distance,
+          status,
+          liveLocation: true,
+        },
       },
-    },
-    trigger: null,
-  });
+      trigger: null,
+    });
+  } catch (error) {
+    logNotificationWarning('Nearby SOS notification failed', error);
+  }
+}
+
+export function addNearbyNotificationResponseListener(onResponse: () => void) {
+  try {
+    configureNotificationHandler();
+    const subscription = Notifications.addNotificationResponseReceivedListener(onResponse);
+    return () => subscription.remove();
+  } catch (error) {
+    logNotificationWarning('Could not attach notification tap handler', error);
+    return () => {};
+  }
 }
 
 export function subscribeToNearbySafetyAlerts(getUser: () => User | null) {
   if (!isSupabaseConfigured()) return () => {};
 
-  const channel = supabase
-    .channel('mobile-nearby-safety-notifications')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'crimes' }, (payload) => {
-      void notifyNearbyCrime(payload.new as RealtimeRow, getUser());
-    })
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sos_alerts' }, (payload) => {
-      void notifyNearbySos(payload.new as RealtimeRow, getUser());
-    })
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sos_alerts' }, (payload) => {
-      void notifyNearbySos(payload.new as RealtimeRow, getUser());
-    })
-    .subscribe();
+  let closed = false;
+  let retryCount = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let channel: ReturnType<typeof supabase.channel> | null = null;
+
+  const cleanupChannel = () => {
+    if (!channel) return;
+    const previous = channel;
+    channel = null;
+    void supabase.removeChannel(previous).catch((error) => {
+      logNotificationWarning('Could not remove old realtime notification channel', error);
+    });
+  };
+
+  const connect = () => {
+    if (closed) return;
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+    cleanupChannel();
+
+    const nextChannel = supabase
+      .channel(`mobile-nearby-safety-notifications-${Date.now()}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'crimes' }, (payload) => {
+        void notifyNearbyCrime(payload.new as RealtimeRow, getUser());
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sos_alerts' }, (payload) => {
+        void notifyNearbySos(payload.new as RealtimeRow, getUser());
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sos_alerts' }, (payload) => {
+        void notifyNearbySos(payload.new as RealtimeRow, getUser());
+      })
+      .subscribe((status, error) => {
+        if (closed || channel !== nextChannel) return;
+        if (status === 'SUBSCRIBED') {
+          retryCount = 0;
+          return;
+        }
+
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          if (retryCount >= MAX_REALTIME_RETRIES) {
+            logNotificationWarning('Realtime notification channel stopped reconnecting', error ?? status);
+            return;
+          }
+
+          retryCount += 1;
+          const delayMs = Math.min(30000, 1000 * 2 ** (retryCount - 1));
+          if (retryTimer) clearTimeout(retryTimer);
+          retryTimer = setTimeout(connect, delayMs);
+        }
+      });
+    channel = nextChannel;
+  };
+
+  connect();
 
   return () => {
-    void supabase.removeChannel(channel);
+    closed = true;
+    if (retryTimer) clearTimeout(retryTimer);
+    cleanupChannel();
   };
 }

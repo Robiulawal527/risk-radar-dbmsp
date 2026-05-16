@@ -88,7 +88,7 @@ export default function ProfileScreen() {
   const saveAlertZoneFromGps = async () => {
     try {
       setGpsLoading(true);
-      await requestNearbyNotificationPermission();
+      const notificationsAllowed = await requestNearbyNotificationPermission();
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission required', 'Allow location access to save an alert zone.');
@@ -110,7 +110,12 @@ export default function ProfileScreen() {
           alertsEnabled: true,
         });
         setAlertsEnabled(true);
-        Alert.alert('Nearby alerts enabled', 'Crimes and SOS alerts near this point can trigger notifications.');
+        Alert.alert(
+          'Nearby alerts enabled',
+          notificationsAllowed
+            ? 'Crimes and SOS alerts near this point can trigger notifications.'
+            : 'Your alert point was saved. Turn on app notifications in phone settings to receive nearby alerts.'
+        );
       } catch (err) {
         const { error } = await supabase.auth.updateUser({
           data: { alertLatitude: lat, alertLongitude: lng, alertsEnabled: true },
@@ -118,7 +123,12 @@ export default function ProfileScreen() {
         if (!error) {
           patchUser({ alertLatitude: lat, alertLongitude: lng, alertsEnabled: true });
           setAlertsEnabled(true);
-          Alert.alert('Nearby alerts enabled', 'Saved through your Supabase user metadata.');
+          Alert.alert(
+            'Nearby alerts enabled',
+            notificationsAllowed
+              ? 'Saved through your Supabase user metadata.'
+              : 'Saved through your Supabase user metadata. Turn on app notifications in phone settings to receive nearby alerts.'
+          );
         } else {
           Alert.alert('Could not update alert zone', getErrorMessage(err, error.message || 'Could not update alert zone.'));
         }

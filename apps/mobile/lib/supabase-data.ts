@@ -1,6 +1,7 @@
 import { CrimeType, Severity, type Crime, type SocialRadarMatch } from '@risk-radar/types';
 import { api } from './api';
-import { supabase, isSupabaseConfigured } from './supabase';
+import { supabase, supabaseWithAccessToken, isSupabaseConfigured } from './supabase';
+import { useAuthStore } from '@/store/auth';
 
 type CrimeInput = {
   type: CrimeType;
@@ -43,6 +44,10 @@ type UserRow = {
 const CRIME_TABLES = ['crimes', 'Crime', 'crime', 'incidents'];
 
 type CrimePayload = Record<string, unknown>;
+type ReportAuth = {
+  userId: string;
+  accessToken: string;
+};
 
 function crimePayload(input: CrimeInput, userId: string) {
   return {
@@ -67,13 +72,63 @@ function crimePayload(input: CrimeInput, userId: string) {
   };
 }
 
+function uuidV4(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+    const value = Math.floor(Math.random() * 16);
+    const next = char === 'x' ? value : (value & 0x3) | 0x8;
+    return next.toString(16);
+  });
+}
+
 function withoutUndefined(payload: CrimePayload): CrimePayload {
   return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined));
+}
+
+function withOptionalUuidId(payload: CrimePayload, reportId: string): CrimePayload[] {
+  return [withoutUndefined({ id: reportId, ...payload }), payload];
 }
 
 function crimePayloadAttempts(input: CrimeInput, userId: string): CrimePayload[] {
   const base = crimePayload(input, userId);
   const now = new Date().toISOString();
+  const reportId = uuidV4();
+  const publicCrimes = withoutUndefined({
+    user_id: userId,
+    type: base.type,
+    category: base.category,
+    title: base.title,
+    description: base.description,
+    latitude: base.latitude,
+    longitude: base.longitude,
+    address: base.address,
+    area: base.area,
+    district: base.district,
+    division: base.division,
+    severity: base.severity,
+    status: base.status,
+    reported_by: base.reportedBy,
+    date_time: base.dateTime,
+    created_at: now,
+    updated_at: now,
+  });
+  const publicCrimesMinimal = withoutUndefined({
+    user_id: userId,
+    type: base.type,
+    category: base.category,
+    title: base.title,
+    description: base.description,
+    latitude: base.latitude,
+    longitude: base.longitude,
+    address: base.address,
+    area: base.area,
+    district: base.district,
+    division: base.division,
+    severity: base.severity,
+    status: base.status,
+    reported_by: base.reportedBy,
+    date_time: base.dateTime,
+    created_at: now,
+  });
   const snake = withoutUndefined({
     user_id: userId,
     type: base.type,
@@ -96,24 +151,6 @@ function crimePayloadAttempts(input: CrimeInput, userId: string): CrimePayload[]
     created_at: now,
     updated_at: now,
   });
-  const publicCrimes = withoutUndefined({
-    user_id: userId,
-    type: base.type,
-    category: base.category,
-    title: base.title,
-    description: base.description,
-    latitude: base.latitude,
-    longitude: base.longitude,
-    address: base.address,
-    area: base.area,
-    district: base.district,
-    division: base.division,
-    severity: base.severity,
-    status: base.status,
-    reported_by: base.reportedBy,
-    date_time: base.dateTime,
-    created_at: now,
-  });
   const common = withoutUndefined({
     user_id: userId,
     reporter_id: userId,
@@ -130,20 +167,64 @@ function crimePayloadAttempts(input: CrimeInput, userId: string): CrimePayload[]
     occurred_at: base.dateTime,
     created_at: now,
   });
-  const appSchema = withoutUndefined(base);
+  const appSchema = withoutUndefined({ id: reportId, ...base });
   const appSchemaNoUser = withoutUndefined({
     ...base,
     userId: undefined,
   });
 
-  const attempts = [snake, publicCrimes, common, appSchema, appSchemaNoUser];
+  const attempts = [
+    ...withOptionalUuidId(publicCrimes, reportId),
+    ...withOptionalUuidId(publicCrimesMinimal, reportId),
+    ...withOptionalUuidId(snake, reportId),
+    ...withOptionalUuidId(common, reportId),
+    appSchema,
+    appSchemaNoUser,
+  ];
   const seen = new Set<string>();
   return attempts.filter((payload) => {
-    const key = JSON.stringify(Object.keys(payload).sort());
+    const key = JSON.stringify(payload);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+}
+
+function supabaseErrorMessage(error: unknown): string {
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String((error as { message?: unknown }).message ?? '');
+  }
+  return error instanceof Error ? error.message : '';
+}
+
+function isMissingTableError(message: string): boolean {
+  return /relation .* does not exist|table .* does not exist|could not find the table|does not exist/i.test(
+    message
+  );
+}
+
+function isRetryablePayloadError(message: string): boolean {
+  return /schema cache|column .* does not exist|could not find .* column|invalid input syntax for type bigint|null value in column "id"|violates not-null constraint/i.test(
+    message
+  );
+}
+
+function isAuthPolicyError(message: string): boolean {
+  return /row-level security|permission denied|jwt|token|unauthorized|not authenticated|42501/i.test(message);
+}
+
+async function getReportAuth(): Promise<ReportAuth | null> {
+  const { data } = await supabase.auth.getSession();
+  if (data.session?.user?.id && data.session.access_token) {
+    return { userId: data.session.user.id, accessToken: data.session.access_token };
+  }
+
+  const state = useAuthStore.getState();
+  if (state.user?.id && state.accessToken) {
+    return { userId: state.user.id, accessToken: state.accessToken };
+  }
+
+  return null;
 }
 
 async function ensureBackendUser() {
@@ -154,15 +235,16 @@ async function ensureBackendUser() {
   }
 }
 
-async function insertCrimeIntoSupabase(input: CrimeInput, userId: string): Promise<Crime | null> {
+async function insertCrimeIntoSupabase(input: CrimeInput, auth: ReportAuth): Promise<Crime | null> {
+  const authedSupabase = supabaseWithAccessToken(auth.accessToken);
   let lastError: unknown;
 
   for (const table of CRIME_TABLES) {
-    for (const payload of crimePayloadAttempts(input, userId)) {
-      const { data, error } = await supabase.from(table).insert(payload).select('*').maybeSingle();
+    for (const payload of crimePayloadAttempts(input, auth.userId)) {
+      const { error } = await authedSupabase.from(table).insert(payload);
 
       if (!error) {
-        const row = (data ?? payload) as Record<string, unknown>;
+        const row = payload as Record<string, unknown>;
         return {
           id: String(row.id ?? `local-${Date.now()}`),
           type: input.type,
@@ -179,32 +261,20 @@ async function insertCrimeIntoSupabase(input: CrimeInput, userId: string): Promi
         };
       }
 
-      const fallback = await supabase.from(table).insert(payload);
-      if (!fallback.error) {
-        return {
-          id: `local-${Date.now()}`,
-          type: input.type,
-          category: input.category,
-          title: input.title,
-          description: input.description,
-          location: input.location,
-          severity: input.severity,
-          status: 'REPORTED',
-          reportedBy: input.reportedBy,
-          dateTime: new Date(input.dateTime),
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
+      const message = supabaseErrorMessage(error).toLowerCase();
+      lastError = error;
+
+      if (isAuthPolicyError(message)) {
+        throw new Error(
+          'Your login session is not authorized to submit reports. Sign out, sign back in, and try again. If it still fails, apply the Supabase RLS policy for authenticated crime inserts.'
+        );
       }
 
-      lastError = fallback.error ?? error;
+      if (!isRetryablePayloadError(message)) break;
     }
 
-    const message =
-      lastError && typeof lastError === 'object' && 'message' in lastError
-        ? String((lastError as { message?: string }).message).toLowerCase()
-        : '';
-    if (!message.includes('relation') && !message.includes('table') && !message.includes('does not exist')) break;
+    const message = supabaseErrorMessage(lastError).toLowerCase();
+    if (!isMissingTableError(message)) break;
   }
 
   if (lastError instanceof Error) throw lastError;
@@ -215,13 +285,11 @@ export async function submitCrimeReport(input: CrimeInput): Promise<Crime> {
   let supabaseError: unknown;
 
   if (isSupabaseConfigured()) {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const userId = sessionData.session?.user.id;
+    const auth = await getReportAuth();
 
-    if (userId) {
+    if (auth) {
       try {
-        await ensureBackendUser();
-        const crime = await insertCrimeIntoSupabase(input, userId);
+        const crime = await insertCrimeIntoSupabase(input, auth);
         if (crime) return crime;
       } catch (firstError) {
         supabaseError = firstError;
@@ -229,7 +297,7 @@ export async function submitCrimeReport(input: CrimeInput): Promise<Crime> {
         if (message.includes('foreign key') || message.includes('violates foreign key')) {
           try {
             await ensureBackendUser();
-            const crime = await insertCrimeIntoSupabase(input, userId);
+            const crime = await insertCrimeIntoSupabase(input, auth);
             if (crime) return crime;
           } catch (retryError) {
             supabaseError = retryError;

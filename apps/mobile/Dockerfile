@@ -28,4 +28,4 @@ WORKDIR /app/apps/mobile
 
 EXPOSE 8081 19000 19001 19002 19006
 
-CMD ["sh", "-lc", "pnpm exec expo start --host ${EXPO_HOST:-lan} --port ${EXPO_PORT:-8081}"]
+CMD ["sh", "scripts/start-expo.sh"]

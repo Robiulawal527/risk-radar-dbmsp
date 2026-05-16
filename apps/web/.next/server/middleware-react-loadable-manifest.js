@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST="{\"app/dashboard/map/page.tsx -> @/components/CrimeMap\":{\"id\":\"app/dashboard/map/page.tsx -> @/components/CrimeMap\",\"files\":[\"static/chunks/_app-pages-browser_src_components_CrimeMap_tsx.js\"]}}"
+self.__REACT_LOADABLE_MANIFEST="{}"
