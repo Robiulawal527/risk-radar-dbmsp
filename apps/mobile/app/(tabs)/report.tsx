@@ -5,7 +5,7 @@ import * as Location from 'expo-location';
 import { useQueryClient } from '@tanstack/react-query';
 import { MaterialIcons } from '@expo/vector-icons';
 import { CrimeType, Severity } from '@risk-radar/types';
-import { api } from '@/lib/api';
+import { submitCrimeReport } from '@/lib/supabase-data';
 import { useAuthStore } from '@/store/auth';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../constants/theme';
 
@@ -156,7 +156,7 @@ export default function ReportScreen() {
 
     setLoading(true);
     try {
-      await api.post('/crimes', {
+      await submitCrimeReport({
         type,
         category: type,
         title: title.trim(),

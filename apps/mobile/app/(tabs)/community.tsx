@@ -4,6 +4,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { CriminalRanking, PhilanthropistRanking, SocialRadarMatch } from '@risk-radar/types';
 import { api } from '@/lib/api';
+import { searchProfilesBySkill } from '@/lib/supabase-data';
 import { useAuthStore } from '@/store/auth';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../constants/theme';
 
@@ -13,10 +14,7 @@ export default function CommunityScreen() {
 
   const matchMutation = useMutation({
     mutationFn: async (skill: string) => {
-      const response = await api.get<{ success: boolean; data: SocialRadarMatch[] }>('/users/search', {
-        params: { skill },
-      });
-      return response.data.data ?? [];
+      return await searchProfilesBySkill(skill);
     },
     onSuccess: (rows) => {
       if (!rows.length) Alert.alert('No matches yet', 'Try a different skill.');
