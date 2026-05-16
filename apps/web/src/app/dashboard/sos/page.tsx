@@ -1,135 +1,534 @@
 'use client';
 
+import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { AlertCircle, Clock, Loader2, MapPin, RefreshCw, ShieldAlert, WifiOff } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { toast } from 'sonner';
+
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { SOSStatus } from '@/lib/types';
-import { AlertCircle, MapPin, Clock } from 'lucide-react';
-import { toast } from 'sonner';
-import { motion } from 'framer-motion';
 import { api } from '@/lib/api';
+import { SOSStatus } from '@/lib/types';
 import type { SOSRequest } from '@/lib/types';
 
-export default function SOSPage() {
-  const qc = useQueryClient();
+type ApiResponse<T> = {
+  success?: boolean;
+  data?: T;
+  message?: string;
+  error?: string;
+};
 
-  const { data: requests = [], isLoading } = useQuery({
+type Coordinates = {
+  latitude: number;
+  longitude: number;
+  accuracy?: number | null;
+};
+
+type LocalSOSRequest = SOSRequest & {
+  isLocalOnly?: boolean;
+  syncError?: string;
+  updatedAt?: string | Date;
+};
+
+const LOCAL_SOS_KEY = 'risk-radar:pending-sos-requests';
+
+const GEOLOCATION_OPTIONS: PositionOptions = {
+  enableHighAccuracy: true,
+  timeout: 20_000,
+  maximumAge: 5_000,
+};
+
+const CREATE_SOS_ENDPOINTS = ['/sos', '/sos/'] as const;
+const GET_MY_SOS_ENDPOINTS = ['/sos/user', '/sos/my', '/sos/me'] as const;
+
+function isBrowser() {
+  return typeof window !== 'undefined';
+}
+
+function getErrorMessage(error: unknown) {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const maybeAxiosError = error as {
+      response?: { status?: number; data?: { message?: string; error?: string } };
+      message?: string;
+    };
+    const status = maybeAxiosError.response?.status;
+    const apiMessage =
+      maybeAxiosError.response?.data?.message || maybeAxiosError.response?.data?.error;
+
+    if (status === 503) {
+      return 'SOS server is temporarily unavailable. Your request was saved locally and will be shown as pending.';
+    }
+
+    if (status) {
+      if (
+        typeof apiMessage === 'string' &&
+        (/schema cache/i.test(apiMessage) || /could not find the table/i.test(apiMessage))
+      ) {
+        return 'SOS storage is not configured yet. Your request was saved locally.';
+      }
+      return apiMessage || `Request failed with status code ${status}`;
+    }
+  }
+
+  return error instanceof Error ? error.message : 'Something went wrong.';
+}
+
+function formatSyncError(message?: string) {
+  if (!message) return 'server unavailable';
+  if (/schema cache/i.test(message) || /could not find the table/i.test(message)) {
+    return 'SOS storage is not configured yet';
+  }
+  return message;
+}
+
+function callEmergencyServices() {
+  if (!isBrowser()) return;
+  const link = document.createElement('a');
+  link.href = 'tel:999';
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function getGeolocationErrorMessage(error: unknown) {
+  if (!isBrowser() || !('geolocation' in navigator)) {
+    return 'Location is not supported on this browser/device.';
+  }
+
+  if (
+    typeof GeolocationPositionError !== 'undefined' &&
+    error instanceof GeolocationPositionError
+  ) {
+    switch (error.code) {
+      case error.PERMISSION_DENIED:
+        return 'Location permission was denied. Allow location access in your browser and try again.';
+      case error.POSITION_UNAVAILABLE:
+        return 'Your location is unavailable. Turn on GPS/network location and try again.';
+      case error.TIMEOUT:
+        return 'Location request timed out. Move to an open area and try again.';
+      default:
+        return error.message || 'Could not read your location.';
+    }
+  }
+
+  return getErrorMessage(error);
+}
+
+function getCurrentCoordinates() {
+  return new Promise<Coordinates>((resolve, reject) => {
+    if (!isBrowser() || !('geolocation' in navigator)) {
+      reject(new Error('Location is not supported on this browser/device.'));
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null,
+        });
+      },
+      reject,
+      GEOLOCATION_OPTIONS
+    );
+  });
+}
+
+function formatCoordinates({ latitude, longitude }: Coordinates) {
+  return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+}
+
+function formatDateTime(value?: string | Date | null) {
+  if (!value) return 'Unknown time';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown time';
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date);
+}
+
+function getStatusVariant(status: SOSRequest['status'], isLocalOnly?: boolean) {
+  if (isLocalOnly) return 'secondary' as const;
+  if (status === SOSStatus.ACTIVE) return 'destructive' as const;
+  if (status === SOSStatus.RESOLVED) return 'success' as const;
+  return 'secondary' as const;
+}
+
+function readLocalSOSRequests(): LocalSOSRequest[] {
+  if (!isBrowser()) return [];
+
+  try {
+    const raw = window.localStorage.getItem(LOCAL_SOS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalSOSRequests(requests: LocalSOSRequest[]) {
+  if (!isBrowser()) return;
+  window.localStorage.setItem(LOCAL_SOS_KEY, JSON.stringify(requests));
+}
+
+function saveLocalSOSRequest(request: LocalSOSRequest) {
+  const existing = readLocalSOSRequests();
+  const next = [request, ...existing.filter((item) => item.id !== request.id)];
+  writeLocalSOSRequests(next);
+}
+
+function removeLocalSOSRequest(id: string) {
+  writeLocalSOSRequests(readLocalSOSRequests().filter((item) => item.id !== id));
+}
+
+async function requestWithFallback<T>(
+  endpoints: readonly string[],
+  request: (endpoint: string) => Promise<T>
+) {
+  let lastError: unknown;
+
+  for (const endpoint of endpoints) {
+    try {
+      return await request(endpoint);
+    } catch (error) {
+      lastError = error;
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status && ![404, 405, 503].includes(status)) break;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Request failed.');
+}
+
+function normalizeRequests(payload: ApiResponse<SOSRequest[]> | SOSRequest[]) {
+  if (Array.isArray(payload)) return payload;
+  if (payload.success === false) {
+    throw new Error(payload.message || payload.error || 'Could not load SOS requests.');
+  }
+  return Array.isArray(payload.data) ? payload.data : [];
+}
+
+function buildSOSPayload(coordinates: Coordinates) {
+  return {
+    location: {
+      latitude: coordinates.latitude,
+      longitude: coordinates.longitude,
+      accuracy: coordinates.accuracy,
+      area: 'GPS fix',
+      address: formatCoordinates(coordinates),
+    },
+    message: 'Emergency assistance requested',
+  };
+}
+
+function buildLocalRequest(coordinates: Coordinates, syncError: string): LocalSOSRequest {
+  const createdAt = new Date().toISOString();
+
+  return {
+    id:
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `local-${Date.now()}`,
+    userId: 'local',
+    status: SOSStatus.ACTIVE,
+    location: {
+      latitude: coordinates.latitude,
+      longitude: coordinates.longitude,
+      accuracy: coordinates.accuracy,
+      area: 'Pending GPS fix',
+      address: formatCoordinates(coordinates),
+    },
+    message: 'Emergency assistance requested',
+    createdAt: new Date(createdAt),
+    updatedAt: createdAt,
+    isLocalOnly: true,
+    syncError,
+  };
+}
+
+export default function SOSPage() {
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const [localRequests, setLocalRequests] = useState<LocalSOSRequest[]>(() =>
+    readLocalSOSRequests()
+  );
+
+  const refreshLocalRequests = useCallback(() => {
+    setLocalRequests(readLocalSOSRequests());
+  }, []);
+
+  const {
+    data: remoteRequests = [],
+    isLoading,
+    isFetching,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ['sos-my'],
     queryFn: async () => {
-      const res = await api.get<{ success: boolean; data: SOSRequest[] }>('/sos/user');
-      return res.data.data ?? [];
+      const data = await requestWithFallback(GET_MY_SOS_ENDPOINTS, async (endpoint) => {
+        const res = await api.get<ApiResponse<SOSRequest[]> | SOSRequest[]>(endpoint);
+        return normalizeRequests(res.data);
+      });
+
+      return data;
+    },
+    staleTime: 30_000,
+    retry: (failureCount, err) => {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 401 || status === 403 || status === 404) return false;
+      return failureCount < 2;
     },
   });
+
+  const requests = useMemo(() => {
+    const remoteIds = new Set(remoteRequests.map((request) => request.id));
+    const pendingLocal = localRequests.filter((request) => !remoteIds.has(request.id));
+
+    return [...pendingLocal, ...remoteRequests].sort((a, b) => {
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [localRequests, remoteRequests]);
+
+  const activeRequest = useMemo(
+    () => requests.find((request) => request.status === SOSStatus.ACTIVE),
+    [requests]
+  );
 
   const sendSOS = useMutation({
     mutationFn: async () => {
-      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-        if (!navigator.geolocation) {
-          reject(new Error('Geolocation not supported'));
-          return;
-        }
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 15_000,
-          maximumAge: 0,
+      const coordinates = await getCurrentCoordinates();
+      const payload = buildSOSPayload(coordinates);
+
+      try {
+        const created = await requestWithFallback(CREATE_SOS_ENDPOINTS, async (endpoint) => {
+          const res = await api.post<ApiResponse<SOSRequest> | SOSRequest>(endpoint, payload);
+          const body = res.data;
+
+          if ('success' in body && body.success === false) {
+            throw new Error(body.message || body.error || 'SOS request could not be created.');
+          }
+
+          if ('data' in body && body.data) return body.data;
+          return body as SOSRequest;
         });
-      });
-      const { latitude, longitude } = pos.coords;
-      const res = await api.post<{ success: boolean; data: SOSRequest }>('/sos/', {
-        location: {
-          latitude,
-          longitude,
-          area: 'GPS fix',
-          address: `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
-        },
-        message: 'Emergency assistance requested',
-      });
-      return res.data.data;
+
+        return { request: created, savedLocally: false };
+      } catch (error) {
+        const localRequest = buildLocalRequest(coordinates, getErrorMessage(error));
+        saveLocalSOSRequest(localRequest);
+        return { request: localRequest, savedLocally: true };
+      }
     },
-    onSuccess: () => {
-      toast.success('SOS sent', {
-        description: 'Your request was stored. Use official emergency numbers for life-threatening situations.',
-      });
-      void qc.invalidateQueries({ queryKey: ['sos-my'] });
+    onSuccess: async ({ request, savedLocally }) => {
+      setConfirming(false);
+
+      if (savedLocally) {
+        const localSyncError =
+          'syncError' in request && typeof request.syncError === 'string'
+            ? request.syncError
+            : 'The server is unavailable. Keep this page open and contact emergency services directly.';
+        refreshLocalRequests();
+        toast.warning('SOS saved locally', {
+          description: localSyncError,
+        });
+      } else {
+        removeLocalSOSRequest(request.id);
+        refreshLocalRequests();
+        toast.success('SOS sent', {
+          description: 'Your emergency request and GPS location were saved.',
+        });
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ['sos-my'] });
     },
-    onError: (e: Error) => {
-      toast.error('Could not send SOS', { description: e.message });
+    onError: (err) => {
+      toast.error('Could not send SOS', {
+        description: getGeolocationErrorMessage(err),
+      });
     },
   });
 
-  return (
-    <div className="mx-auto max-w-4xl space-y-8">
-      <div className="text-center">
-        <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full border border-red-500/30 bg-red-500/5">
-          <AlertCircle className="h-14 w-14 text-red-500" />
-        </div>
-        <h1 className="text-6xl font-black tracking-tighter text-white">Emergency SOS</h1>
-        <p className="mt-3 text-xl text-slate-400">Uses your live GPS and stores an active SOS in the system</p>
-      </div>
+  const handlePrimaryAction = () => {
+    if (sendSOS.isPending) return;
 
-      <Card className="glass-panel border-red-500/20 p-12 text-center">
+    if (!confirming) {
+      setConfirming(true);
+      toast.warning('Confirm emergency SOS', {
+        description: 'Press Send now to confirm this is an emergency.',
+      });
+      return;
+    }
+
+    sendSOS.mutate();
+    callEmergencyServices();
+  };
+
+  const handleRefresh = async () => {
+    refreshLocalRequests();
+    await refetch();
+  };
+
+  return (
+    <div className="mx-auto max-w-4xl space-y-8 px-4 pb-12">
+      <section className="text-center" aria-labelledby="sos-heading">
+        <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full border border-red-500/30 bg-red-500/5">
+          <AlertCircle className="h-14 w-14 text-red-500" aria-hidden="true" />
+        </div>
+        <h1
+          id="sos-heading"
+          className="text-4xl font-black tracking-tighter text-white sm:text-6xl"
+        >
+          Emergency SOS
+        </h1>
+        <p className="mt-3 text-base text-slate-400 sm:text-xl">
+          Sends your current GPS location and creates an active emergency request.
+        </p>
+      </section>
+
+      <Card className="glass-panel border-red-500/20 p-6 text-center sm:p-12">
+        {activeRequest ? (
+          <div className="mx-auto mb-6 flex max-w-xl items-start gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-left text-sm text-red-100">
+            <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-red-300" aria-hidden="true" />
+            <div>
+              <div className="font-semibold">
+                {'isLocalOnly' in activeRequest && activeRequest.isLocalOnly
+                  ? 'SOS is pending server sync.'
+                  : 'You already have an active SOS request.'}
+              </div>
+              <div className="mt-1 text-red-100/80">
+                Created {formatDateTime(activeRequest.createdAt)}. Avoid duplicate submissions
+                unless your location changed or this is a new emergency.
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <Button
           type="button"
-          onClick={() => sendSOS.mutate()}
+          onClick={handlePrimaryAction}
           disabled={sendSOS.isPending}
-          className="danger-button mx-auto mb-6 h-24 w-24 rounded-full text-2xl shadow-[0_0_80px_-10px_rgb(239,68,68)]"
+          aria-busy={sendSOS.isPending}
+          aria-live="polite"
+          className="danger-button mx-auto mb-4 h-28 w-28 rounded-full text-xl font-black shadow-[0_0_80px_-10px_rgb(239,68,68)] sm:h-32 sm:w-32 sm:text-2xl"
         >
-          {sendSOS.isPending ? '…' : 'SOS'}
+          {sendSOS.isPending ? (
+            <Loader2 className="h-8 w-8 animate-spin" aria-hidden="true" />
+          ) : confirming ? (
+            'SEND'
+          ) : (
+            'SOS'
+          )}
         </Button>
 
-        <div className="mx-auto max-w-xs text-sm text-slate-400">
-          For real emergencies also call local emergency services. This button records your location in Risk Radar.
-        </div>
+        {confirming ? (
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-red-200">Confirm emergency request</p>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setConfirming(false)}
+              disabled={sendSOS.isPending}
+            >
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <p className="mx-auto max-w-md text-sm text-slate-400">
+            For life-threatening emergencies, call official emergency services immediately. This
+            button records your location in Risk Radar.
+          </p>
+        )}
       </Card>
 
-      <div>
-        <div className="mb-4 flex items-center justify-between px-1">
-          <div className="flex items-center gap-2 font-semibold">
-            <Clock className="h-4 w-4" /> YOUR RECENT REQUESTS
+      <section aria-labelledby="recent-sos-heading">
+        <div className="mb-4 flex items-center justify-between gap-3 px-1">
+          <div id="recent-sos-heading" className="flex items-center gap-2 font-semibold">
+            <Clock className="h-4 w-4" aria-hidden="true" /> YOUR RECENT REQUESTS
           </div>
-          <Badge variant="secondary">{isLoading ? '…' : `${requests.length} TOTAL`}</Badge>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => void handleRefresh()}
+              disabled={isFetching}
+              aria-label="Refresh SOS requests"
+            >
+              <RefreshCw
+                className={isFetching ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
+                aria-hidden="true"
+              />
+            </Button>
+            <Badge variant="secondary">{isLoading ? '...' : `${requests.length} TOTAL`}</Badge>
+          </div>
         </div>
+
+        {isError ? (
+          <Card className="glass-card mb-3 flex items-center justify-center gap-2 border-yellow-500/20 p-4 text-center text-sm text-yellow-100">
+            <WifiOff className="h-4 w-4" aria-hidden="true" />
+            <span>{getErrorMessage(error)} Showing locally saved SOS requests when available.</span>
+          </Card>
+        ) : null}
 
         <div className="space-y-3">
           {requests.length > 0 ? (
-            requests.map((req, index) => (
-              <motion.div
-                key={req.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.03 }}
-                className="glass-card flex items-center justify-between p-5"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="rounded-2xl bg-white/5 p-3">
-                    <MapPin className="h-5 w-5 text-red-400" />
-                  </div>
-                  <div>
-                    <div className="font-semibold">{req.location.area ?? 'Location'}</div>
-                    <div className="text-xs text-slate-400">{new Date(req.createdAt).toLocaleString()}</div>
-                  </div>
-                </div>
-                <Badge
-                  variant={
-                    req.status === SOSStatus.ACTIVE
-                      ? 'destructive'
-                      : req.status === SOSStatus.RESOLVED
-                        ? 'success'
-                        : 'secondary'
-                  }
+            requests.map((request, index) => {
+              const isLocalOnly = 'isLocalOnly' in request && Boolean(request.isLocalOnly);
+
+              return (
+                <motion.div
+                  key={request.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.03 }}
+                  className="glass-card flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  {req.status}
-                </Badge>
-              </motion.div>
-            ))
+                  <div className="flex min-w-0 items-center gap-4">
+                    <div className="rounded-2xl bg-white/5 p-3">
+                      <MapPin className="h-5 w-5 text-red-400" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold">
+                        {request.location?.area || 'Location captured'}
+                      </div>
+                      <div className="truncate text-xs text-slate-400">
+                        {request.location?.address || 'GPS coordinates saved'}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {formatDateTime(request.createdAt)}
+                      </div>
+                      {isLocalOnly ? (
+                        <div className="mt-1 text-xs text-yellow-200">
+                          Pending sync: {formatSyncError((request as LocalSOSRequest).syncError)}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <Badge variant={getStatusVariant(request.status, isLocalOnly)}>
+                    {isLocalOnly ? 'PENDING' : request.status}
+                  </Badge>
+                </motion.div>
+              );
+            })
           ) : (
-            <div className="py-12 text-center text-slate-400">
-              {isLoading ? 'Loading…' : 'No emergency requests yet. Stay safe.'}
-            </div>
+            <Card className="glass-card py-12 text-center text-slate-400">
+              {isLoading
+                ? 'Loading emergency requests...'
+                : 'No emergency requests yet. Stay safe.'}
+            </Card>
           )}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

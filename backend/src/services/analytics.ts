@@ -20,13 +20,15 @@ export async function getSocialRadarMatches(
     name: string;
     email: string;
     avatar: string | null;
+    phone: string | null;
+    skills: string[] | null;
     crime_n: number;
     sos_n: number;
     crimes_json: CrimeSeverityRow[] | null;
   };
 
   const rows = await query<Row>(
-    `SELECT u.id, u.name, u.email, u.avatar,
+    `SELECT u.id, u.name, u.email, u.avatar, u.phone, u.skills,
       COALESCE((SELECT COUNT(*)::int FROM "Crime" c WHERE c."userId" = u.id), 0) AS crime_n,
       COALESCE((SELECT COUNT(*)::int FROM "SOSRequest" s WHERE s."userId" = u.id), 0) AS sos_n,
       (SELECT COALESCE(json_agg(json_build_object('id', c.id, 'severity', c.severity)), '[]'::json)
@@ -42,8 +44,8 @@ export async function getSocialRadarMatches(
 
   const matches = rows.map((user) => {
     const crimes = Array.isArray(user.crimes_json) ? user.crimes_json : [];
-    const profileInterests = generateProfileInterests(user.id, user.name);
-    const profileSkills = generateProfileSkills(user.id, user.name);
+    const profileSkills = Array.isArray(user.skills) ? user.skills.filter(Boolean) : [];
+    const profileInterests = profileSkills;
     const riskPenalty = crimes.reduce((acc, crime) => {
       if (crime.severity === 'CRITICAL') return acc + 20;
       if (crime.severity === 'HIGH') return acc + 12;
@@ -66,12 +68,16 @@ export async function getSocialRadarMatches(
     const skillScore = normalizedWantedSkills.length
       ? Math.round((skillOverlap / normalizedWantedSkills.length) * 100)
       : 70;
-    const compatibilityScore = Math.round(interestScore * 0.5 + skillScore * 0.3 + trustScore * 0.2);
+    const compatibilityScore = Math.round(
+      interestScore * 0.5 + skillScore * 0.3 + trustScore * 0.2
+    );
 
     return {
       userId: user.id,
+      id: user.id,
       name: user.name,
       email: user.email,
+      phone: user.phone,
       avatar: user.avatar,
       interests: profileInterests,
       skills: profileSkills,
@@ -84,7 +90,16 @@ export async function getSocialRadarMatches(
     };
   });
 
-  return matches.sort((a, b) => b.compatibilityScore - a.compatibilityScore).slice(0, 20);
+  return matches
+    .filter((match) => {
+      if (!normalizedWantedSkills.length && !normalizedWantedInterests.length) return true;
+      const searchable = [...match.skills, ...match.interests].map((value) => value.toLowerCase());
+      return [...normalizedWantedSkills, ...normalizedWantedInterests].some((wanted) =>
+        searchable.some((own) => own.includes(wanted))
+      );
+    })
+    .sort((a, b) => b.compatibilityScore - a.compatibilityScore)
+    .slice(0, 20);
 }
 
 export async function getCrimeStats(): Promise<CrimeStats> {
@@ -274,38 +289,4 @@ function calculateRiskLevel(count: number): Severity {
   if (count >= 30) return Severity.HIGH;
   if (count >= 10) return Severity.MEDIUM;
   return Severity.LOW;
-}
-
-function generateProfileInterests(userId: string, name: string): string[] {
-  const pool = [
-    'Academic Excellence',
-    'Web Development',
-    'Mobile Apps',
-    'Open Source',
-    'AI Projects',
-    'Community Service',
-    'Data Science',
-    'Public Safety',
-  ];
-  return pickDeterministicTags(userId, name, pool);
-}
-
-function generateProfileSkills(userId: string, name: string): string[] {
-  const pool = [
-    'React',
-    'Node.js',
-    'Python',
-    'UI/UX',
-    'Mentoring',
-    'Communication',
-    'Problem Solving',
-    'Cyber Security',
-  ];
-  return pickDeterministicTags(userId, name, pool);
-}
-
-function pickDeterministicTags(seedA: string, seedB: string, pool: string[]): string[] {
-  const seed =
-    (seedA + seedB).split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % pool.length;
-  return [pool[seed], pool[(seed + 3) % pool.length], pool[(seed + 5) % pool.length]];
 }

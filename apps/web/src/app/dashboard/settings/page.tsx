@@ -10,6 +10,24 @@ import { api } from '@/lib/api';
 import { MapPin, Loader2 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err && typeof err === 'object' && 'response' in err) {
+    const data = (err as { response?: { data?: { error?: unknown; message?: unknown } } }).response
+      ?.data;
+    const apiMessage = data?.error ?? data?.message;
+    if (typeof apiMessage === 'string' && apiMessage.trim()) return apiMessage;
+  }
+  if (err instanceof Error && err.message.trim()) return err.message;
+  return fallback;
+}
+
+function parseSkills(value: string): string[] {
+  return value
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
 export default function SettingsPage() {
   const { user, logout, patchUser } = useAuthStore();
   const [name, setName] = useState('');
@@ -30,17 +48,17 @@ export default function SettingsPage() {
   const saveProfile = async () => {
     if (!user) return;
     setSaving(true);
+    const skillsArr = parseSkills(skills);
     try {
-      const skillsArr = skills
-        .split(',')
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
-      const res = await api.put<{ success: boolean; data: Record<string, unknown> }>('/users/profile', {
-        name: name.trim(),
-        phone: phone.trim(),
-        skills: skillsArr,
-        alertsEnabled,
-      });
+      const res = await api.put<{ success: boolean; data: Record<string, unknown> }>(
+        '/users/profile',
+        {
+          name: name.trim(),
+          phone: phone.trim(),
+          skills: skillsArr,
+          alertsEnabled,
+        }
+      );
       const d = res.data.data;
       patchUser({
         name: String(d.name ?? name),
@@ -53,11 +71,30 @@ export default function SettingsPage() {
       });
       toast.success('Profile saved');
     } catch (err: unknown) {
-      const msg =
-        err && typeof err === 'object' && 'response' in err
-          ? String((err as { response?: { data?: { error?: string } } }).response?.data?.error)
-          : 'Could not save';
-      toast.error(msg || 'Could not save');
+      const supabase = getSupabaseBrowserClient();
+      if (supabase) {
+        const { error } = await supabase.auth.updateUser({
+          data: {
+            name: name.trim(),
+            phone: phone.trim(),
+            skills: skillsArr,
+            alertsEnabled,
+          },
+        });
+
+        if (!error) {
+          patchUser({
+            name: name.trim(),
+            phone: phone.trim(),
+            skills: skillsArr,
+            alertsEnabled,
+          });
+          toast.success('Profile saved');
+          return;
+        }
+      }
+
+      toast.error(getErrorMessage(err, 'Could not save profile'));
     } finally {
       setSaving(false);
     }
@@ -74,11 +111,14 @@ export default function SettingsPage() {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         try {
-          const res = await api.put<{ success: boolean; data: Record<string, unknown> }>('/users/profile', {
-            alertLatitude: lat,
-            alertLongitude: lng,
-            alertsEnabled: true,
-          });
+          const res = await api.put<{ success: boolean; data: Record<string, unknown> }>(
+            '/users/profile',
+            {
+              alertLatitude: lat,
+              alertLongitude: lng,
+              alertsEnabled: true,
+            }
+          );
           const d = res.data.data;
           patchUser({
             alertLatitude: typeof d.alertLatitude === 'number' ? d.alertLatitude : lat,
@@ -90,11 +130,29 @@ export default function SettingsPage() {
             description: 'New incidents within your alert radius will create in-app notifications.',
           });
         } catch (err: unknown) {
-          const msg =
-            err && typeof err === 'object' && 'response' in err
-              ? String((err as { response?: { data?: { error?: string } } }).response?.data?.error)
-              : 'Could not update alert zone';
-          toast.error(msg || 'Could not update alert zone');
+          const supabase = getSupabaseBrowserClient();
+          if (supabase) {
+            const { error } = await supabase.auth.updateUser({
+              data: {
+                alertLatitude: lat,
+                alertLongitude: lng,
+                alertsEnabled: true,
+              },
+            });
+
+            if (!error) {
+              patchUser({
+                alertLatitude: lat,
+                alertLongitude: lng,
+                alertsEnabled: true,
+              });
+              setAlertsEnabled(true);
+              toast.success('Nearby alerts enabled');
+              return;
+            }
+          }
+
+          toast.error(getErrorMessage(err, 'Could not update alert zone'));
         } finally {
           setGpsLoading(false);
         }
@@ -128,12 +186,24 @@ export default function SettingsPage() {
           </div>
           <div>
             <label className="text-xs text-slate-400">PHONE NUMBER</label>
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} className="mt-1.5" placeholder="e.g. +1234567890" />
+            <Input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="mt-1.5"
+              placeholder="e.g. +1234567890"
+            />
           </div>
           <div>
             <label className="text-xs text-slate-400">SKILLS</label>
-            <Input value={skills} onChange={(e) => setSkills(e.target.value)} className="mt-1.5" placeholder="e.g. doctor, engineer, web developer" />
-            <span className="text-xs text-slate-500">Comma-separated (e.g. doctor, engineer, web developer)</span>
+            <Input
+              value={skills}
+              onChange={(e) => setSkills(e.target.value)}
+              className="mt-1.5"
+              placeholder="e.g. doctor, engineer, web developer"
+            />
+            <span className="text-xs text-slate-500">
+              Comma-separated (e.g. doctor, engineer, web developer)
+            </span>
           </div>
           <label className="flex cursor-pointer items-center gap-3 text-sm text-slate-300">
             <input
@@ -154,8 +224,8 @@ export default function SettingsPage() {
       <Card className="glass-panel border-teal-500/20">
         <h3 className="mb-2 text-xl font-semibold text-teal-200">Alert location (~10 km²)</h3>
         <p className="mb-4 text-sm text-slate-400">
-          Save the point you care about (often home or work). When someone files a report within the configured radius,
-          you get an in-app notification while signed in.
+          Save the point you care about (often home or work). When someone files a report within the
+          configured radius, you get an in-app notification while signed in.
         </p>
         {user?.alertLatitude != null && user?.alertLongitude != null ? (
           <p className="mb-4 text-xs text-slate-500">
@@ -164,7 +234,13 @@ export default function SettingsPage() {
         ) : (
           <p className="mb-4 text-xs text-slate-500">No alert point saved yet.</p>
         )}
-        <Button type="button" variant="outline" className="w-full border-white/20" disabled={gpsLoading} onClick={saveAlertZoneFromGps}>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full border-white/20"
+          disabled={gpsLoading}
+          onClick={saveAlertZoneFromGps}
+        >
           {gpsLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -187,7 +263,9 @@ export default function SettingsPage() {
           variant="destructive"
           className="w-full"
           onClick={() => {
-            getSupabaseBrowserClient()?.auth.signOut().catch(() => {});
+            getSupabaseBrowserClient()
+              ?.auth.signOut()
+              .catch(() => {});
             logout();
             toast.message('Signed out');
             window.location.href = '/';

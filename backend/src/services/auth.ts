@@ -25,6 +25,7 @@ type UserRow = {
   alertsEnabled: boolean | null;
   createdAt: Date;
   updatedAt: Date;
+  skills: string[] | null;
 };
 
 function toUser(row: UserRow): User {
@@ -98,6 +99,10 @@ export async function validateSupabaseToken(accessToken: string): Promise<User> 
     phone: string | null;
     avatar: string | null;
     role: string | null;
+    skills: string[] | null;
+    alertLatitude: number | null;
+    alertLongitude: number | null;
+    alertsEnabled: boolean | null;
   } | null = null;
   try {
     profile = await queryOne<{
@@ -105,7 +110,19 @@ export async function validateSupabaseToken(accessToken: string): Promise<User> 
       phone: string | null;
       avatar: string | null;
       role: string | null;
-    }>('SELECT full_name, phone, avatar, role FROM public.profiles WHERE id = $1', [supabaseUser.id]);
+      skills: string[] | null;
+      alertLatitude: number | null;
+      alertLongitude: number | null;
+      alertsEnabled: boolean | null;
+    }>(
+      `SELECT full_name, phone, avatar, role, skills,
+        alert_latitude AS "alertLatitude",
+        alert_longitude AS "alertLongitude",
+        alerts_enabled AS "alertsEnabled"
+       FROM public.profiles
+       WHERE id = $1`,
+      [supabaseUser.id]
+    );
   } catch {
     // Missing table, wrong name, or DB mismatch — still create/sync local User from Supabase + metadata.
   }
@@ -122,13 +139,52 @@ export async function validateSupabaseToken(accessToken: string): Promise<User> 
       supabaseUser.email.split('@')[0] ||
       'User';
     const phone =
-      profile?.phone ?? ((supabaseUser.user_metadata?.phone as string | undefined) ?? null);
+      profile?.phone ?? (supabaseUser.user_metadata?.phone as string | undefined) ?? null;
 
     localUser = await queryOne<UserRow>(
-      `INSERT INTO "User" (id, email, password, name, phone, role, "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, $4, $5, 'USER', NOW(), NOW())
+      `INSERT INTO "User" (
+         id, email, password, name, phone, role, skills,
+         "alertLatitude", "alertLongitude", "alertsEnabled", "createdAt", "updatedAt"
+       )
+       VALUES ($1, $2, $3, $4, $5, 'USER', $6, $7, $8, COALESCE($9, true), NOW(), NOW())
        RETURNING *`,
-      [supabaseUser.id, supabaseUser.email, hashedPassword, name, phone]
+      [
+        supabaseUser.id,
+        supabaseUser.email,
+        hashedPassword,
+        name,
+        phone,
+        profile?.skills ?? [],
+        profile?.alertLatitude ?? null,
+        profile?.alertLongitude ?? null,
+        profile?.alertsEnabled ?? true,
+      ]
+    );
+  } else if (profile) {
+    localUser = await queryOne<UserRow>(
+      `UPDATE "User"
+       SET name = COALESCE($2, name),
+           phone = COALESCE($3, phone),
+           avatar = COALESCE($4, avatar),
+           role = COALESCE($5, role),
+           skills = COALESCE($6, skills),
+           "alertLatitude" = COALESCE($7, "alertLatitude"),
+           "alertLongitude" = COALESCE($8, "alertLongitude"),
+           "alertsEnabled" = COALESCE($9, "alertsEnabled"),
+           "updatedAt" = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [
+        localUser.id,
+        profile.full_name,
+        profile.phone,
+        profile.avatar,
+        profile.role,
+        profile.skills,
+        profile.alertLatitude,
+        profile.alertLongitude,
+        profile.alertsEnabled,
+      ]
     );
   }
 

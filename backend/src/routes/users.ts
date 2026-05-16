@@ -1,4 +1,3 @@
-
 import { Router } from 'express';
 import type { IRouter } from 'express-serve-static-core';
 import * as userService from '../services/user.js';
@@ -42,7 +41,7 @@ usersRouter.get(
       return res.status(400).json({ success: false, message: 'Skill query required' });
     }
     // Find users with the skill (case-insensitive)
-    const rows = await userService.searchUsersBySkill(skill);
+    const rows = await userService.searchUsersBySkill(skill, req.user!.id);
     res.json({ success: true, data: rows });
   })
 );

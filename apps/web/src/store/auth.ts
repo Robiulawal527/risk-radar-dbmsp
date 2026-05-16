@@ -12,6 +12,7 @@ export interface AuthUser {
   alertLatitude?: number | null;
   alertLongitude?: number | null;
   alertsEnabled?: boolean | null;
+  skills?: string[];
 }
 
 interface AuthState {

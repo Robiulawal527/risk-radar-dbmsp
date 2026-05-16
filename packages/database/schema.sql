@@ -116,7 +116,15 @@ CREATE INDEX IF NOT EXISTS idx_notification_user ON "Notification" ("userId");
 -- In Supabase, `auth.users` is the source of truth for credentials.
 CREATE TABLE IF NOT EXISTS public.profiles (
   id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email text UNIQUE,
   full_name text,
+  phone text,
+  avatar text,
+  skills text[] NOT NULL DEFAULT '{}',
+  alert_latitude double precision,
+  alert_longitude double precision,
+  alerts_enabled boolean NOT NULL DEFAULT true,
   role text NOT NULL DEFAULT 'USER',
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );

@@ -22,9 +22,15 @@ function mapUser(u: Record<string, unknown>): AuthUser {
     role: (String(u.role ?? 'USER').toUpperCase() as UserRole) || 'USER',
     avatar: u.avatar != null ? String(u.avatar) : undefined,
     phone: u.phone != null ? String(u.phone) : undefined,
+    skills: Array.isArray(u.skills) ? u.skills.map(String) : [],
     alertLatitude: typeof u.alertLatitude === 'number' ? u.alertLatitude : null,
     alertLongitude: typeof u.alertLongitude === 'number' ? u.alertLongitude : null,
-    alertsEnabled: typeof u.alertsEnabled === 'boolean' ? u.alertsEnabled : u.alertsEnabled == null ? null : Boolean(u.alertsEnabled),
+    alertsEnabled:
+      typeof u.alertsEnabled === 'boolean'
+        ? u.alertsEnabled
+        : u.alertsEnabled == null
+          ? null
+          : Boolean(u.alertsEnabled),
   };
 }
 
@@ -78,7 +84,9 @@ function LoginInner() {
       }
       const msg = (() => {
         if (err && typeof err === 'object' && 'response' in err) {
-          return String((err as { response?: { data?: { error?: string } } }).response?.data?.error || '');
+          return String(
+            (err as { response?: { data?: { error?: string } } }).response?.data?.error || ''
+          );
         }
         if (err instanceof Error) return err.message;
         return 'Sign in failed';

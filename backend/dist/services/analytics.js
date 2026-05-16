@@ -8,7 +8,7 @@ exports.getPhilanthropistRankings = getPhilanthropistRankings;
 const database_1 = require("@risk-radar/database");
 const types_1 = require("@risk-radar/types");
 async function getSocialRadarMatches(currentUserId, wantedInterests, wantedSkills) {
-    const rows = await (0, database_1.query)(`SELECT u.id, u.name, u.email, u.avatar,
+    const rows = await (0, database_1.query)(`SELECT u.id, u.name, u.email, u.avatar, u.phone, u.skills,
       COALESCE((SELECT COUNT(*)::int FROM "Crime" c WHERE c."userId" = u.id), 0) AS crime_n,
       COALESCE((SELECT COUNT(*)::int FROM "SOSRequest" s WHERE s."userId" = u.id), 0) AS sos_n,
       (SELECT COALESCE(json_agg(json_build_object('id', c.id, 'severity', c.severity)), '[]'::json)
@@ -20,8 +20,8 @@ async function getSocialRadarMatches(currentUserId, wantedInterests, wantedSkill
     const normalizedWantedSkills = wantedSkills.map((v) => v.toLowerCase());
     const matches = rows.map((user) => {
         const crimes = Array.isArray(user.crimes_json) ? user.crimes_json : [];
-        const profileInterests = generateProfileInterests(user.id, user.name);
-        const profileSkills = generateProfileSkills(user.id, user.name);
+        const profileSkills = Array.isArray(user.skills) ? user.skills.filter(Boolean) : [];
+        const profileInterests = profileSkills;
         const riskPenalty = crimes.reduce((acc, crime) => {
             if (crime.severity === 'CRITICAL')
                 return acc + 20;
@@ -45,8 +45,10 @@ async function getSocialRadarMatches(currentUserId, wantedInterests, wantedSkill
         const compatibilityScore = Math.round(interestScore * 0.5 + skillScore * 0.3 + trustScore * 0.2);
         return {
             userId: user.id,
+            id: user.id,
             name: user.name,
             email: user.email,
+            phone: user.phone,
             avatar: user.avatar,
             interests: profileInterests,
             skills: profileSkills,
@@ -58,7 +60,15 @@ async function getSocialRadarMatches(currentUserId, wantedInterests, wantedSkill
             totalGoodWorkRecords: user.sos_n,
         };
     });
-    return matches.sort((a, b) => b.compatibilityScore - a.compatibilityScore).slice(0, 20);
+    return matches
+        .filter((match) => {
+        if (!normalizedWantedSkills.length && !normalizedWantedInterests.length)
+            return true;
+        const searchable = [...match.skills, ...match.interests].map((value) => value.toLowerCase());
+        return [...normalizedWantedSkills, ...normalizedWantedInterests].some((wanted) => searchable.some((own) => own.includes(wanted)));
+    })
+        .sort((a, b) => b.compatibilityScore - a.compatibilityScore)
+        .slice(0, 20);
 }
 async function getCrimeStats() {
     const totalRow = await (0, database_1.queryOne)(`SELECT COUNT(*)::text AS n FROM "Crime"`);
@@ -201,35 +211,5 @@ function calculateRiskLevel(count) {
     if (count >= 10)
         return types_1.Severity.MEDIUM;
     return types_1.Severity.LOW;
-}
-function generateProfileInterests(userId, name) {
-    const pool = [
-        'Academic Excellence',
-        'Web Development',
-        'Mobile Apps',
-        'Open Source',
-        'AI Projects',
-        'Community Service',
-        'Data Science',
-        'Public Safety',
-    ];
-    return pickDeterministicTags(userId, name, pool);
-}
-function generateProfileSkills(userId, name) {
-    const pool = [
-        'React',
-        'Node.js',
-        'Python',
-        'UI/UX',
-        'Mentoring',
-        'Communication',
-        'Problem Solving',
-        'Cyber Security',
-    ];
-    return pickDeterministicTags(userId, name, pool);
-}
-function pickDeterministicTags(seedA, seedB, pool) {
-    const seed = (seedA + seedB).split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % pool.length;
-    return [pool[seed], pool[(seed + 3) % pool.length], pool[(seed + 5) % pool.length]];
 }
 //# sourceMappingURL=analytics.js.map

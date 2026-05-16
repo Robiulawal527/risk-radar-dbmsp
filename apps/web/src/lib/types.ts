@@ -109,8 +109,10 @@ export interface PhilanthropistRanking {
 
 export interface SocialRadarMatch {
   userId: string;
+  id?: string;
   name: string;
   email: string;
+  phone?: string | null;
   avatar?: string | null;
   interests: string[];
   skills: string[];

@@ -1,4 +1,3 @@
-
 import * as bcrypt from 'bcryptjs';
 import { query, queryOne } from '@risk-radar/database';
 import type { User } from '@risk-radar/types';
@@ -23,6 +22,49 @@ type UserRow = {
 function toUser(row: UserRow): User {
   const { password: _p, ...rest } = row;
   return rest as User;
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function syncProfileToSupabase(row: UserRow): Promise<void> {
+  if (!isUuid(row.id)) return;
+
+  try {
+    await query(
+      `INSERT INTO public.profiles (
+         id, email, full_name, phone, avatar, role, skills,
+         alert_latitude, alert_longitude, alerts_enabled, updated_at
+       )
+       VALUES ($1::uuid, $2, $3, $4, $5, COALESCE($6, 'USER'), $7, $8, $9, COALESCE($10, true), NOW())
+       ON CONFLICT (id) DO UPDATE
+         SET email = EXCLUDED.email,
+             full_name = EXCLUDED.full_name,
+             phone = EXCLUDED.phone,
+             avatar = EXCLUDED.avatar,
+             role = EXCLUDED.role,
+             skills = EXCLUDED.skills,
+             alert_latitude = EXCLUDED.alert_latitude,
+             alert_longitude = EXCLUDED.alert_longitude,
+             alerts_enabled = EXCLUDED.alerts_enabled,
+             updated_at = NOW()`,
+      [
+        row.id,
+        row.email,
+        row.name,
+        row.phone,
+        row.avatar,
+        row.role,
+        row.skills ?? [],
+        row.alertLatitude,
+        row.alertLongitude,
+        row.alertsEnabled,
+      ]
+    );
+  } catch {
+    // Older databases may not have the Supabase profile extension columns yet.
+  }
 }
 
 export async function updateProfile(
@@ -77,6 +119,7 @@ export async function updateProfile(
   );
 
   if (!row) throw new HttpError(404, 'User not found');
+  await syncProfileToSupabase(row);
   return toUser(row);
 }
 
@@ -108,14 +151,18 @@ export async function changePassword(
 }
 
 // Search users by skill (case-insensitive)
-export async function searchUsersBySkill(skill: string): Promise<User[]> {
+export async function searchUsersBySkill(skill: string, currentUserId?: string): Promise<User[]> {
   const rows = await query<UserRow>(
-    `SELECT * FROM "User" 
-     WHERE EXISTS (
-       SELECT 1 FROM unnest(skills) AS s
+    `SELECT * FROM "User"
+     WHERE ($2::text IS NULL OR id <> $2)
+       AND
+       EXISTS (
+       SELECT 1 FROM unnest(COALESCE(skills, ARRAY[]::text[])) AS s
        WHERE s ILIKE '%' || $1 || '%'
-     )`,
-    [skill]
+     )
+     ORDER BY name ASC
+     LIMIT 50`,
+    [skill, currentUserId ?? null]
   );
   return rows.map(toUser);
 }

@@ -43,6 +43,45 @@ function toUser(row) {
     const { password: _p, ...rest } = row;
     return rest;
 }
+function isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+async function syncProfileToSupabase(row) {
+    if (!isUuid(row.id))
+        return;
+    try {
+        await (0, database_1.query)(`INSERT INTO public.profiles (
+         id, email, full_name, phone, avatar, role, skills,
+         alert_latitude, alert_longitude, alerts_enabled, updated_at
+       )
+       VALUES ($1::uuid, $2, $3, $4, $5, COALESCE($6, 'USER'), $7, $8, $9, COALESCE($10, true), NOW())
+       ON CONFLICT (id) DO UPDATE
+         SET email = EXCLUDED.email,
+             full_name = EXCLUDED.full_name,
+             phone = EXCLUDED.phone,
+             avatar = EXCLUDED.avatar,
+             role = EXCLUDED.role,
+             skills = EXCLUDED.skills,
+             alert_latitude = EXCLUDED.alert_latitude,
+             alert_longitude = EXCLUDED.alert_longitude,
+             alerts_enabled = EXCLUDED.alerts_enabled,
+             updated_at = NOW()`, [
+            row.id,
+            row.email,
+            row.name,
+            row.phone,
+            row.avatar,
+            row.role,
+            row.skills ?? [],
+            row.alertLatitude,
+            row.alertLongitude,
+            row.alertsEnabled,
+        ]);
+    }
+    catch {
+        // Older databases may not have the Supabase profile extension columns yet.
+    }
+}
 async function updateProfile(userId, data) {
     const sets = ['"updatedAt" = NOW()'];
     const values = [];
@@ -79,6 +118,7 @@ async function updateProfile(userId, data) {
     const row = await (0, database_1.queryOne)(`UPDATE "User" SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, values);
     if (!row)
         throw new http_error_js_1.HttpError(404, 'User not found');
+    await syncProfileToSupabase(row);
     return toUser(row);
 }
 async function changePassword(userId, currentPassword, newPassword) {
@@ -100,8 +140,16 @@ async function changePassword(userId, currentPassword, newPassword) {
     ]);
 }
 // Search users by skill (case-insensitive)
-async function searchUsersBySkill(skill) {
-    const rows = await (0, database_1.query)(`SELECT * FROM "User" WHERE skills && ARRAY[$1]::text[]`, [skill]);
+async function searchUsersBySkill(skill, currentUserId) {
+    const rows = await (0, database_1.query)(`SELECT * FROM "User"
+     WHERE ($2::text IS NULL OR id <> $2)
+       AND
+       EXISTS (
+       SELECT 1 FROM unnest(COALESCE(skills, ARRAY[]::text[])) AS s
+       WHERE s ILIKE '%' || $1 || '%'
+     )
+     ORDER BY name ASC
+     LIMIT 50`, [skill, currentUserId ?? null]);
     return rows.map(toUser);
 }
 //# sourceMappingURL=user.js.map

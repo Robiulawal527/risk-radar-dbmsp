@@ -21,9 +21,15 @@ function mapUser(u: Record<string, unknown>): AuthUser {
     role: (String(u.role ?? 'USER').toUpperCase() as UserRole) || 'USER',
     avatar: u.avatar != null ? String(u.avatar) : undefined,
     phone: u.phone != null ? String(u.phone) : undefined,
+    skills: Array.isArray(u.skills) ? u.skills.map(String) : [],
     alertLatitude: typeof u.alertLatitude === 'number' ? u.alertLatitude : null,
     alertLongitude: typeof u.alertLongitude === 'number' ? u.alertLongitude : null,
-    alertsEnabled: typeof u.alertsEnabled === 'boolean' ? u.alertsEnabled : u.alertsEnabled == null ? null : Boolean(u.alertsEnabled),
+    alertsEnabled:
+      typeof u.alertsEnabled === 'boolean'
+        ? u.alertsEnabled
+        : u.alertsEnabled == null
+          ? null
+          : Boolean(u.alertsEnabled),
   };
 }
 
@@ -85,7 +91,9 @@ export default function SignupPage() {
     } catch (err: unknown) {
       const msg = (() => {
         if (err && typeof err === 'object' && 'response' in err) {
-          return String((err as { response?: { data?: { error?: string } } }).response?.data?.error || '');
+          return String(
+            (err as { response?: { data?: { error?: string } } }).response?.data?.error || ''
+          );
         }
         if (err instanceof Error) return err.message;
         return 'Could not create account';
@@ -104,21 +112,36 @@ export default function SignupPage() {
             <Shield className="h-8 w-8 text-white" />
           </div>
           <h1 className="text-4xl font-black tracking-tighter">Join the movement</h1>
-          <p className="mt-2 text-slate-400">Create your account to report and receive area alerts</p>
+          <p className="mt-2 text-slate-400">
+            Create your account to report and receive area alerts
+          </p>
         </div>
 
         <div className="glass-panel">
           <form onSubmit={handleSignup} className="space-y-5">
             <div>
               <label className="mb-2 block text-xs tracking-widest text-slate-400">FULL NAME</label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" />
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                autoComplete="name"
+              />
             </div>
             <div>
               <label className="mb-2 block text-xs tracking-widest text-slate-400">EMAIL</label>
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+              />
             </div>
             <div>
-              <label className="mb-2 block text-xs tracking-widest text-slate-400">CREATE PASSWORD</label>
+              <label className="mb-2 block text-xs tracking-widest text-slate-400">
+                CREATE PASSWORD
+              </label>
               <Input
                 type="password"
                 value={password}

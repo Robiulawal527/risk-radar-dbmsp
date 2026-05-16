@@ -6,19 +6,22 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Search, Heart, Star, ShieldCheck, Phone, Mail, Award, CheckCircle2 } from 'lucide-react';
+import { Search, Phone, Mail, Award, CheckCircle2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { api } from '@/lib/api';
 import type { SocialRadarMatch } from '@/lib/types';
 import { toast } from 'sonner';
+import { useAuthStore } from '@/store/auth';
 
 export default function SocialRadarPage() {
+  const { user: currentUser } = useAuthStore();
   const [skillSearch, setSkillSearch] = useState('');
 
   const matchMutation = useMutation({
-    mutationFn: async () => {
-      const res = await api.get<{ success: boolean; data: any[] }>('/users/search', {
-        params: { skill: skillSearch.trim() },
+    mutationFn: async (skill?: string) => {
+      const query = (skill ?? skillSearch).trim();
+      const res = await api.get<{ success: boolean; data: SocialRadarMatch[] }>('/users/search', {
+        params: { skill: query },
       });
       return res.data.data ?? [];
     },
@@ -31,12 +34,25 @@ export default function SocialRadarPage() {
   });
 
   const matches = matchMutation.data ?? [];
+  const savedSkills = currentUser?.skills ?? [];
+
+  const runSearch = (skill?: string) => {
+    const query = (skill ?? skillSearch).trim();
+    if (!query) {
+      toast.message('Enter a skill to search');
+      return;
+    }
+    setSkillSearch(query);
+    matchMutation.mutate(query);
+  };
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-5xl font-black tracking-tighter">Social Radar</h1>
-        <p className="mt-2 text-xl text-slate-400">Find trusted allies from the registered community</p>
+        <p className="mt-2 text-xl text-slate-400">
+          Find trusted allies from the registered community
+        </p>
       </div>
 
       <Card className="glass-panel">
@@ -47,15 +63,32 @@ export default function SocialRadarPage() {
             onChange={(e) => setSkillSearch(e.target.value)}
             className="mt-2"
             placeholder="e.g. doctor, engineer, web developer"
-            onKeyDown={(e) => { if (e.key === 'Enter') matchMutation.mutate(); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') runSearch();
+            }}
           />
+          {savedSkills.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {savedSkills.map((skill) => (
+                <button
+                  key={skill}
+                  type="button"
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200 transition hover:border-teal-400/40 hover:bg-teal-400/10"
+                  onClick={() => runSearch(skill)}
+                >
+                  {skill}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
         <Button
           type="button"
-          onClick={() => matchMutation.mutate()}
-          disabled={matchMutation.isPending}
+          onClick={() => runSearch()}
+          disabled={matchMutation.isPending || !skillSearch.trim()}
           className="mt-6 w-full premium-button"
         >
+          <Search className="mr-2 h-4 w-4" />
           {matchMutation.isPending ? 'SEARCHING…' : 'FIND PEOPLE BY SKILL'}
         </Button>
       </Card>
@@ -78,9 +111,11 @@ export default function SocialRadarPage() {
                     {(user.name || user.email || '?')[0].toUpperCase()}
                   </div>
                   <div className="flex-1 overflow-hidden">
-                    <h3 className="text-xl font-bold truncate tracking-tight text-white">{user.name}</h3>
+                    <h3 className="text-xl font-bold truncate tracking-tight text-white">
+                      {user.name}
+                    </h3>
                     <p className="text-sm text-slate-300 truncate">{user.email}</p>
-                    
+
                     <div className="mt-2 flex items-center gap-1 text-xs font-medium text-teal-400">
                       <CheckCircle2 className="h-3.5 w-3.5" />
                       <span>Verified Profile</span>
@@ -89,11 +124,17 @@ export default function SocialRadarPage() {
                 </div>
 
                 <div className="mt-6 flex-1">
-                  <p className="text-xs font-semibold tracking-widest text-slate-500 mb-3 uppercase">Expertise & Skills</p>
+                  <p className="text-xs font-semibold tracking-widest text-slate-500 mb-3 uppercase">
+                    Expertise & Skills
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {Array.isArray(user.skills) && user.skills.length > 0 ? (
                       user.skills.map((skill: string) => (
-                        <Badge key={skill} variant="secondary" className="bg-white/5 hover:bg-white/10 text-teal-100 border-white/10 px-2.5 py-1">
+                        <Badge
+                          key={skill}
+                          variant="secondary"
+                          className="bg-white/5 hover:bg-white/10 text-teal-100 border-white/10 px-2.5 py-1"
+                        >
                           {skill}
                         </Badge>
                       ))
@@ -105,20 +146,31 @@ export default function SocialRadarPage() {
 
                 <div className="mt-6 flex gap-3 pt-4 border-t border-white/5">
                   {user.phone ? (
-                     <Button variant="default" className="flex-1 bg-teal-500 hover:bg-teal-600 text-white font-medium shadow-[0_0_15px_rgba(20,184,166,0.2)] hover:shadow-[0_0_20px_rgba(20,184,166,0.4)] transition-all" asChild>
-                       <a href={`tel:${user.phone}`}>
-                         <Phone className="mr-2 h-4 w-4" />
-                         Call
-                       </a>
-                     </Button>
+                    <Button
+                      variant="default"
+                      className="flex-1 bg-teal-500 hover:bg-teal-600 text-white font-medium shadow-[0_0_15px_rgba(20,184,166,0.2)] hover:shadow-[0_0_20px_rgba(20,184,166,0.4)] transition-all"
+                      asChild
+                    >
+                      <a href={`tel:${user.phone}`}>
+                        <Phone className="mr-2 h-4 w-4" />
+                        Call
+                      </a>
+                    </Button>
                   ) : (
-                     <Button variant="secondary" className="flex-1 bg-white/5 text-slate-400 pointer-events-none opacity-50">
-                       <Phone className="mr-2 h-4 w-4" />
-                       No Phone
-                     </Button>
+                    <Button
+                      variant="secondary"
+                      className="flex-1 bg-white/5 text-slate-400 pointer-events-none opacity-50"
+                    >
+                      <Phone className="mr-2 h-4 w-4" />
+                      No Phone
+                    </Button>
                   )}
-                  
-                  <Button variant="outline" className="flex-1 border-white/10 hover:bg-white/5" asChild>
+
+                  <Button
+                    variant="outline"
+                    className="flex-1 border-white/10 hover:bg-white/5"
+                    asChild
+                  >
                     <a href={`mailto:${user.email}`}>
                       <Mail className="mr-2 h-4 w-4" />
                       Email
@@ -132,11 +184,15 @@ export default function SocialRadarPage() {
       </div>
 
       {!matchMutation.isPending && matches.length === 0 && matchMutation.isSuccess ? (
-        <p className="text-center text-sm text-slate-500">No rows returned. Adjust filters and search again.</p>
+        <p className="text-center text-sm text-slate-500">
+          No rows returned. Adjust filters and search again.
+        </p>
       ) : null}
 
       {!matchMutation.isSuccess && !matchMutation.isPending ? (
-        <p className="text-center text-sm text-slate-500">Enter interests and skills, then run a search.</p>
+        <p className="text-center text-sm text-slate-500">
+          Enter interests and skills, then run a search.
+        </p>
       ) : null}
     </div>
   );

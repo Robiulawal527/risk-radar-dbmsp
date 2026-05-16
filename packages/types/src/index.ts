@@ -63,6 +63,23 @@ export interface User {
   skills?: string[];
 }
 
+export interface SocialRadarMatch {
+  userId: string;
+  id?: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+  avatar?: string | null;
+  interests: string[];
+  skills: string[];
+  crimeScore: number;
+  goodWorkScore: number;
+  trustScore: number;
+  compatibilityScore: number;
+  totalCrimeRecords: number;
+  totalGoodWorkRecords: number;
+}
+
 export interface LoginCredentials {
   email: string;
   password: string;

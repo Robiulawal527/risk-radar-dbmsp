@@ -22,13 +22,26 @@ export async function supabaseAuthMeFallback(authorization: string): Promise<Nex
   const supabase = createClient(supabaseUrl, supabaseKey);
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data.user?.email) {
-    return NextResponse.json({ success: false, error: 'Invalid or expired token' }, { status: 401 });
+    return NextResponse.json(
+      { success: false, error: 'Invalid or expired token' },
+      { status: 401 }
+    );
   }
 
   const u = data.user;
   const email = u.email ?? '';
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select(
+      'full_name, phone, avatar, role, skills, alert_latitude, alert_longitude, alerts_enabled'
+    )
+    .eq('id', u.id)
+    .maybeSingle();
+  const profileData = (profile ?? {}) as Record<string, unknown>;
+  const metadata = u.user_metadata ?? {};
   const name =
-    (typeof u.user_metadata?.name === 'string' && u.user_metadata.name.trim()) ||
+    (typeof profileData.full_name === 'string' && profileData.full_name.trim()) ||
+    (typeof metadata.name === 'string' && metadata.name.trim()) ||
     email.split('@')[0] ||
     'User';
 
@@ -38,12 +51,38 @@ export async function supabaseAuthMeFallback(authorization: string): Promise<Nex
       id: u.id,
       email,
       name,
-      phone: (typeof u.user_metadata?.phone === 'string' ? u.user_metadata.phone : undefined) ?? undefined,
-      avatar: (typeof u.user_metadata?.avatar === 'string' ? u.user_metadata.avatar : undefined) ?? undefined,
-      role: 'USER',
-      alertLatitude: null,
-      alertLongitude: null,
-      alertsEnabled: null,
+      phone:
+        (typeof profileData.phone === 'string' ? profileData.phone : undefined) ??
+        (typeof metadata.phone === 'string' ? metadata.phone : undefined) ??
+        undefined,
+      avatar:
+        (typeof profileData.avatar === 'string' ? profileData.avatar : undefined) ??
+        (typeof metadata.avatar === 'string' ? metadata.avatar : undefined) ??
+        undefined,
+      role: typeof profileData.role === 'string' ? profileData.role : 'USER',
+      skills: Array.isArray(profileData.skills)
+        ? profileData.skills.map(String)
+        : Array.isArray(metadata.skills)
+          ? metadata.skills.map(String)
+          : [],
+      alertLatitude:
+        typeof profileData.alert_latitude === 'number'
+          ? profileData.alert_latitude
+          : typeof metadata.alertLatitude === 'number'
+            ? metadata.alertLatitude
+            : null,
+      alertLongitude:
+        typeof profileData.alert_longitude === 'number'
+          ? profileData.alert_longitude
+          : typeof metadata.alertLongitude === 'number'
+            ? metadata.alertLongitude
+            : null,
+      alertsEnabled:
+        typeof profileData.alerts_enabled === 'boolean'
+          ? profileData.alerts_enabled
+          : typeof metadata.alertsEnabled === 'boolean'
+            ? metadata.alertsEnabled
+            : null,
       createdAt: u.created_at,
       updatedAt: new Date().toISOString(),
     },

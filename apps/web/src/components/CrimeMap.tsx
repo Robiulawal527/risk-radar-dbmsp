@@ -29,8 +29,7 @@ function fixLeafletIcons() {
   };
   delete proto._getIconUrl;
   L.Icon.Default.mergeOptions({
-    iconRetinaUrl:
-      'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
     iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
     shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
   });
@@ -57,7 +56,11 @@ function severityWeight(severity: Crime['severity']): number {
   }
 }
 
-function severityMarkerStyle(severity: Crime['severity']): { color: string; fillColor: string; fillOpacity: number } {
+function severityMarkerStyle(severity: Crime['severity']): {
+  color: string;
+  fillColor: string;
+  fillOpacity: number;
+} {
   switch (severity) {
     case Severity.CRITICAL:
       return { color: '#fecaca', fillColor: '#ef4444', fillOpacity: 0.92 };
@@ -71,6 +74,17 @@ function severityMarkerStyle(severity: Crime['severity']): { color: string; fill
 }
 
 /** ~10 km² default viewport centered on geographic Bangladesh (see `focusSquareKm2` for sizing). */
+
+function hasRenderableSize(map: L.Map): boolean {
+  const container = map.getContainer();
+  const { width, height } = container.getBoundingClientRect();
+  return width > 0 && height > 0;
+}
+
+function invalidateSizeWhenRenderable(map: L.Map): void {
+  if (!hasRenderableSize(map)) return;
+  map.invalidateSize({ animate: false });
+}
 
 export interface CrimeMapProps {
   crimes: Crime[];
@@ -113,11 +127,7 @@ const CrimeMap = forwardRef<CrimeMapHandle, CrimeMapProps>(function CrimeMap(
     fitNominatimBoundingBox(south: number, north: number, west: number, east: number) {
       const map = mapRef.current;
       if (!map) return;
-      if (
-        ![south, north, west, east].every(Number.isFinite) ||
-        south >= north ||
-        west >= east
-      ) {
+      if (![south, north, west, east].every(Number.isFinite) || south >= north || west >= east) {
         return;
       }
       map.fitBounds(
@@ -144,14 +154,23 @@ const CrimeMap = forwardRef<CrimeMapHandle, CrimeMapProps>(function CrimeMap(
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(map);
 
-    const corners = latLngSquareBoundsKm2(BANGLADESH_DEFAULT_CENTER.lat, BANGLADESH_DEFAULT_CENTER.lng, 10);
-    map.fitBounds(L.latLngBounds(corners[0], corners[1]), { animate: false, padding: [14, 14], maxZoom: 16 });
+    const corners = latLngSquareBoundsKm2(
+      BANGLADESH_DEFAULT_CENTER.lat,
+      BANGLADESH_DEFAULT_CENTER.lng,
+      10
+    );
+    map.fitBounds(L.latLngBounds(corners[0], corners[1]), {
+      animate: false,
+      padding: [14, 14],
+      maxZoom: 16,
+    });
 
     mapRef.current = map;
 
     let cancelled = false;
     const tryGeolocate =
-      typeof navigator !== 'undefined' && typeof navigator.geolocation?.getCurrentPosition === 'function';
+      typeof navigator !== 'undefined' &&
+      typeof navigator.geolocation?.getCurrentPosition === 'function';
     if (tryGeolocate) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -168,9 +187,7 @@ const CrimeMap = forwardRef<CrimeMapHandle, CrimeMapProps>(function CrimeMap(
       );
     }
 
-    const onResize = () => {
-      map.invalidateSize({ animate: false });
-    };
+    const onResize = () => invalidateSizeWhenRenderable(map);
     requestAnimationFrame(onResize);
 
     const ro = new ResizeObserver(onResize);
@@ -216,7 +233,12 @@ const CrimeMap = forwardRef<CrimeMapHandle, CrimeMapProps>(function CrimeMap(
     }
 
     if (!crimes.length) {
-      requestAnimationFrame(() => map.invalidateSize({ animate: false }));
+      requestAnimationFrame(() => invalidateSizeWhenRenderable(map));
+      return;
+    }
+
+    if (!hasRenderableSize(map)) {
+      requestAnimationFrame(() => invalidateSizeWhenRenderable(map));
       return;
     }
 
@@ -274,7 +296,7 @@ const CrimeMap = forwardRef<CrimeMapHandle, CrimeMapProps>(function CrimeMap(
     markerGroup.addTo(map);
     markersRef.current = markerGroup;
 
-    requestAnimationFrame(() => map.invalidateSize({ animate: false }));
+    requestAnimationFrame(() => invalidateSizeWhenRenderable(map));
   }, [crimes, showEmptyState]);
 
   return (
