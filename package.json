@@ -18,6 +18,9 @@
     "web": "turbo run dev --filter=@risk-radar/web",
     "mobile": "turbo run dev --filter=@risk-radar/mobile",
     "backend": "turbo run dev --filter=@risk-radar/backend",
+    "docker:web-mobile": "docker compose --env-file .env.docker up --build web mobile",
+    "docker:full": "docker compose --env-file .env.docker --profile backend up --build",
+    "docker:down": "docker compose --env-file .env.docker --profile backend down",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
   },
   "devDependencies": {
