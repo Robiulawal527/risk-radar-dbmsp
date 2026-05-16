@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import * as Location from 'expo-location';
 import { MaterialIcons } from '@expo/vector-icons';
 import { api } from '@/lib/api';
+import { requestNearbyNotificationPermission } from '@/lib/nearby-notifications';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../constants/theme';
@@ -87,6 +88,7 @@ export default function ProfileScreen() {
   const saveAlertZoneFromGps = async () => {
     try {
       setGpsLoading(true);
+      await requestNearbyNotificationPermission();
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission required', 'Allow location access to save an alert zone.');
@@ -108,7 +110,7 @@ export default function ProfileScreen() {
           alertsEnabled: true,
         });
         setAlertsEnabled(true);
-        Alert.alert('Nearby alerts enabled', 'New incidents near this point can create in-app notifications.');
+        Alert.alert('Nearby alerts enabled', 'Crimes and SOS alerts near this point can trigger notifications.');
       } catch (err) {
         const { error } = await supabase.auth.updateUser({
           data: { alertLatitude: lat, alertLongitude: lng, alertsEnabled: true },
@@ -181,7 +183,7 @@ export default function ProfileScreen() {
           <MaterialIcons name="location-on" size={20} color={COLORS.accent} />
           <Text style={styles.cardTitle}>Alert Location</Text>
         </View>
-        <Text style={styles.helpText}>Save home, work, or another point you care about. New nearby reports can trigger alerts.</Text>
+        <Text style={styles.helpText}>Save home, work, or another point you care about. Nearby crimes and live SOS alerts can trigger notifications.</Text>
         {user?.alertLatitude != null && user?.alertLongitude != null ? (
           <Text style={styles.savedLocation}>Saved: {user.alertLatitude.toFixed(4)}, {user.alertLongitude.toFixed(4)}</Text>
         ) : (

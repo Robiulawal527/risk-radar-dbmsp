@@ -6,7 +6,7 @@ function configuredTableCandidates(): string[] {
   const fromEnv = raw
     ? raw
         .split(',')
-        .map((s) => s.trim())
+        .map((s: string) => s.trim())
         .filter(Boolean)
     : [];
   const defaults = ['crimes', 'crime', 'Crime', 'incidents'];

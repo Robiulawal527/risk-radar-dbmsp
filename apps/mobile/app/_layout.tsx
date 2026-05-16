@@ -1,4 +1,5 @@
 import { SupabaseAuthSync } from '@/components/SupabaseAuthSync';
+import { NearbySafetyNotifications } from '@/components/NearbySafetyNotifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { useState } from 'react';
@@ -19,6 +20,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={styles.root}>
       <QueryClientProvider client={queryClient}>
         <SupabaseAuthSync />
+        <NearbySafetyNotifications />
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="(tabs)" />

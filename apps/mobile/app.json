@@ -22,7 +22,8 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -36,6 +37,7 @@
           "locationAlwaysAndWhenInUsePermission": "Allow Risk Radar to use your location to show nearby crime data."
         }
       ],
+      "expo-notifications",
       "expo-font"
     ],
     "experiments": {

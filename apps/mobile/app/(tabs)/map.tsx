@@ -1,14 +1,15 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { Crime } from '@risk-radar/types';
 import { api } from '@/lib/api';
 import { fetchCrimesForMapFromSupabase, filterCrimesByAreaQuery } from '@/lib/map-crimes';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import { fetchActiveSosAlertsFromSupabase } from '@/lib/sos-alerts';
+import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SHADOWS, SPACING } from '../constants/theme';
 
 function crimesFromApiPayload(payload: unknown): Crime[] {
@@ -39,6 +40,7 @@ function markerColor(severity: string) {
 
 export default function MapScreen() {
   const mapRef = useRef<MapView | null>(null);
+  const queryClient = useQueryClient();
   const [region, setRegion] = useState({
     latitude: 23.8103,
     longitude: 90.4125,
@@ -67,6 +69,39 @@ export default function MapScreen() {
     retry: 2,
   });
 
+  const { data: activeSosAlerts = [], isError: sosError } = useQuery({
+    queryKey: ['active-sos-alerts'],
+    queryFn: () => fetchActiveSosAlertsFromSupabase(200),
+    enabled: isSupabaseConfigured(),
+    staleTime: 5_000,
+    refetchInterval: 15_000,
+    retry: 2,
+  });
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+
+    const channel = supabase
+      .channel('mobile-live-map')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'crimes' }, () => {
+        void queryClient.invalidateQueries({ queryKey: ['map-crimes'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'Crime' }, () => {
+        void queryClient.invalidateQueries({ queryKey: ['map-crimes'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sos_alerts' }, () => {
+        void queryClient.invalidateQueries({ queryKey: ['active-sos-alerts'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'SOSRequest' }, () => {
+        void queryClient.invalidateQueries({ queryKey: ['active-sos-alerts'] });
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
   const visibleCrimes = useMemo(() => filterCrimesByAreaQuery(crimes, selectedArea), [crimes, selectedArea]);
 
   const markers = useMemo(
@@ -82,6 +117,19 @@ export default function MapScreen() {
         }))
         .filter((marker) => Number.isFinite(marker.latitude) && Number.isFinite(marker.longitude)),
     [visibleCrimes]
+  );
+
+  const sosMarkers = useMemo(
+    () =>
+      activeSosAlerts
+        .map((alert) => ({
+          id: alert.id,
+          latitude: Number(alert.location?.latitude),
+          longitude: Number(alert.location?.longitude),
+          message: alert.message || 'Emergency assistance requested',
+        }))
+        .filter((marker) => Number.isFinite(marker.latitude) && Number.isFinite(marker.longitude)),
+    [activeSosAlerts]
   );
 
   const animateToRegion = (next: typeof region) => {
@@ -157,6 +205,18 @@ export default function MapScreen() {
             pinColor={markerColor(marker.severity)}
           />
         ))}
+        {sosMarkers.map((marker) => (
+          <Marker
+            key={`sos-${marker.id}`}
+            coordinate={{ latitude: marker.latitude, longitude: marker.longitude }}
+            title="Live SOS alert"
+            description={marker.message}
+          >
+            <View style={styles.sosMarker}>
+              <MaterialIcons name="emergency" size={18} color="#fff" />
+            </View>
+          </Marker>
+        ))}
       </MapView>
 
       <View style={styles.topOverlay}>
@@ -182,7 +242,17 @@ export default function MapScreen() {
         </View>
 
         {isError ? <Text style={styles.errorText}>Could not refresh incidents. Showing available map data.</Text> : null}
+        {sosError ? <Text style={styles.errorText}>Could not refresh live SOS alerts.</Text> : null}
       </View>
+
+      {sosMarkers.length > 0 ? (
+        <View style={styles.liveSosBanner}>
+          <MaterialIcons name="emergency-share" size={18} color="#fff" />
+          <Text style={styles.liveSosText}>
+            {sosMarkers.length} live SOS alert{sosMarkers.length === 1 ? '' : 's'}
+          </Text>
+        </View>
+      ) : null}
 
       <TouchableOpacity style={styles.sosButton} onPress={() => router.push('/(tabs)/sos' as never)}>
         <MaterialIcons name="emergency" size={22} color="#fff" />
@@ -237,6 +307,39 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     fontWeight: '700',
+  },
+  liveSosBanner: {
+    position: 'absolute',
+    left: SPACING.md,
+    right: SPACING.md,
+    bottom: 104,
+    minHeight: 44,
+    borderRadius: RADIUS.full,
+    backgroundColor: 'rgba(220, 38, 38, 0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.24)',
+    paddingHorizontal: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    ...SHADOWS.card,
+  },
+  liveSosText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  sosMarker: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.danger,
+    borderWidth: 3,
+    borderColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOWS.card,
   },
   sosButton: {
     position: 'absolute',

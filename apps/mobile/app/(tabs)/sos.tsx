@@ -6,6 +6,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SOSStatus, type SOSRequest } from '@risk-radar/types';
 import { api } from '@/lib/api';
+import { createSosAlertInSupabase, fetchMySosAlertsFromSupabase } from '@/lib/sos-alerts';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../constants/theme';
 
 const LOCAL_SOS_KEY = 'risk-radar:pending-sos-requests';
@@ -140,10 +142,17 @@ export default function SosScreen() {
     queryKey: ['sos-my'],
     queryFn: async () => {
       const [remote, local] = await Promise.all([
-        requestWithFallback(GET_MY_SOS_ENDPOINTS, async (endpoint) => {
-          const response = await api.get<ApiResponse<SOSRequest[]> | SOSRequest[]>(endpoint);
-          return normalizeRequests(response.data);
-        }),
+        isSupabaseConfigured()
+          ? fetchMySosAlertsFromSupabase().catch(() =>
+              requestWithFallback(GET_MY_SOS_ENDPOINTS, async (endpoint) => {
+                const response = await api.get<ApiResponse<SOSRequest[]> | SOSRequest[]>(endpoint);
+                return normalizeRequests(response.data);
+              })
+            )
+          : requestWithFallback(GET_MY_SOS_ENDPOINTS, async (endpoint) => {
+              const response = await api.get<ApiResponse<SOSRequest[]> | SOSRequest[]>(endpoint);
+              return normalizeRequests(response.data);
+            }),
         readLocalSOSRequests(),
       ]);
       setLocalRequests(local);
@@ -193,14 +202,22 @@ export default function SosScreen() {
     try {
       const coordinates = await readCoordinates();
       try {
-        await requestWithFallback(CREATE_SOS_ENDPOINTS, async (endpoint) => {
-          const response = await api.post<ApiResponse<SOSRequest>>(endpoint, buildSOSPayload(coordinates));
-          if (response.data.success === false) {
-            throw new Error(response.data.message || response.data.error || 'Could not create SOS request.');
-          }
-          return response.data;
+        const direct = await createSosAlertInSupabase({
+          coordinates,
+          message: 'Emergency assistance requested',
         });
+
+        if (!direct) {
+          await requestWithFallback(CREATE_SOS_ENDPOINTS, async (endpoint) => {
+            const response = await api.post<ApiResponse<SOSRequest>>(endpoint, buildSOSPayload(coordinates));
+            if (response.data.success === false) {
+              throw new Error(response.data.message || response.data.error || 'Could not create SOS request.');
+            }
+            return response.data;
+          });
+        }
         await queryClient.invalidateQueries({ queryKey: ['sos-my'] });
+        await queryClient.invalidateQueries({ queryKey: ['active-sos-alerts'] });
         Alert.alert('Alert sent', 'Your GPS location was shared with emergency responders.');
       } catch (error) {
         const message = getErrorMessage(error);

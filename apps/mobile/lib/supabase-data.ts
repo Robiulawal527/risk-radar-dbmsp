@@ -40,7 +40,9 @@ type UserRow = {
   skills: string[] | null;
 };
 
-const CRIME_TABLES = ['Crime', 'crimes', 'crime', 'incidents'];
+const CRIME_TABLES = ['crimes', 'Crime', 'crime', 'incidents'];
+
+type CrimePayload = Record<string, unknown>;
 
 function crimePayload(input: CrimeInput, userId: string) {
   return {
@@ -65,6 +67,85 @@ function crimePayload(input: CrimeInput, userId: string) {
   };
 }
 
+function withoutUndefined(payload: CrimePayload): CrimePayload {
+  return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined));
+}
+
+function crimePayloadAttempts(input: CrimeInput, userId: string): CrimePayload[] {
+  const base = crimePayload(input, userId);
+  const now = new Date().toISOString();
+  const snake = withoutUndefined({
+    user_id: userId,
+    type: base.type,
+    category: base.category,
+    title: base.title,
+    description: base.description,
+    latitude: base.latitude,
+    longitude: base.longitude,
+    address: base.address,
+    area: base.area,
+    district: base.district,
+    division: base.division,
+    severity: base.severity,
+    status: base.status,
+    reported_by: base.reportedBy,
+    victim_info: base.victimInfo,
+    criminal_info: base.criminalInfo,
+    witnesses: base.witnesses,
+    date_time: base.dateTime,
+    created_at: now,
+    updated_at: now,
+  });
+  const publicCrimes = withoutUndefined({
+    user_id: userId,
+    type: base.type,
+    category: base.category,
+    title: base.title,
+    description: base.description,
+    latitude: base.latitude,
+    longitude: base.longitude,
+    address: base.address,
+    area: base.area,
+    district: base.district,
+    division: base.division,
+    severity: base.severity,
+    status: base.status,
+    reported_by: base.reportedBy,
+    date_time: base.dateTime,
+    created_at: now,
+  });
+  const common = withoutUndefined({
+    user_id: userId,
+    reporter_id: userId,
+    type: base.type,
+    category: base.category,
+    title: base.title,
+    description: base.description,
+    latitude: base.latitude,
+    longitude: base.longitude,
+    area: base.area,
+    severity: base.severity,
+    status: base.status,
+    reported_by: base.reportedBy,
+    occurred_at: base.dateTime,
+    created_at: now,
+  });
+  const appSchema = withoutUndefined(base);
+  const appSchemaNoUser = withoutUndefined({
+    ...base,
+    userId: undefined,
+  });
+
+  const attempts = [snake, publicCrimes, common, appSchema, appSchemaNoUser];
+  const seen = new Set<string>();
+  return attempts.filter((payload) => {
+    const key = JSON.stringify(Object.keys(payload).sort());
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 async function ensureBackendUser() {
   try {
     await api.get('/auth/me');
@@ -77,32 +158,53 @@ async function insertCrimeIntoSupabase(input: CrimeInput, userId: string): Promi
   let lastError: unknown;
 
   for (const table of CRIME_TABLES) {
-    const { data, error } = await supabase
-      .from(table)
-      .insert(crimePayload(input, userId))
-      .select('*')
-      .single();
+    for (const payload of crimePayloadAttempts(input, userId)) {
+      const { data, error } = await supabase.from(table).insert(payload).select('*').maybeSingle();
 
-    if (!error && data) {
-      return {
-        id: String(data.id),
-        type: input.type,
-        category: input.category,
-        title: input.title,
-        description: input.description,
-        location: input.location,
-        severity: input.severity,
-        status: String(data.status ?? 'REPORTED'),
-        reportedBy: input.reportedBy,
-        dateTime: new Date(data.dateTime ?? data.date_time ?? input.dateTime),
-        createdAt: new Date(data.createdAt ?? data.created_at ?? input.dateTime),
-        updatedAt: new Date(data.updatedAt ?? data.updated_at ?? input.dateTime),
-      };
+      if (!error) {
+        const row = (data ?? payload) as Record<string, unknown>;
+        return {
+          id: String(row.id ?? `local-${Date.now()}`),
+          type: input.type,
+          category: input.category,
+          title: input.title,
+          description: input.description,
+          location: input.location,
+          severity: input.severity,
+          status: String(row.status ?? 'REPORTED'),
+          reportedBy: input.reportedBy,
+          dateTime: new Date(String(row.dateTime ?? row.date_time ?? row.occurred_at ?? input.dateTime)),
+          createdAt: new Date(String(row.createdAt ?? row.created_at ?? input.dateTime)),
+          updatedAt: new Date(String(row.updatedAt ?? row.updated_at ?? input.dateTime)),
+        };
+      }
+
+      const fallback = await supabase.from(table).insert(payload);
+      if (!fallback.error) {
+        return {
+          id: `local-${Date.now()}`,
+          type: input.type,
+          category: input.category,
+          title: input.title,
+          description: input.description,
+          location: input.location,
+          severity: input.severity,
+          status: 'REPORTED',
+          reportedBy: input.reportedBy,
+          dateTime: new Date(input.dateTime),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+      }
+
+      lastError = fallback.error ?? error;
     }
 
-    lastError = error;
-    const message = error?.message?.toLowerCase() ?? '';
-    if (!message.includes('relation') && !message.includes('schema cache')) break;
+    const message =
+      lastError && typeof lastError === 'object' && 'message' in lastError
+        ? String((lastError as { message?: string }).message).toLowerCase()
+        : '';
+    if (!message.includes('relation') && !message.includes('table') && !message.includes('does not exist')) break;
   }
 
   if (lastError instanceof Error) throw lastError;
