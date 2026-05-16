@@ -35,3 +35,20 @@ coverage/
 
 # @generated expo-cli
 # @end expo-cli
+
+
+# Next.js
+.next/
+out/
+
+# Turborepo
+.turbo/
+
+# Node
+node_modules/
+
+# Logs
+*.log
+
+# Cache
+.cache/

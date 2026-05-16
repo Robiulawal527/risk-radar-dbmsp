@@ -21,3 +21,21 @@ pnpm-debug.log*
 
 # OS
 .DS_Store
+
+
+
+# Next.js
+.next/
+out/
+
+# Turborepo
+.turbo/
+
+# Node
+node_modules/
+
+# Logs
+*.log
+
+# Cache
+.cache/
