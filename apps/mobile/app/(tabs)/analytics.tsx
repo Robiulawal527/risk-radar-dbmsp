@@ -66,14 +66,29 @@ function formatLabel(value: string) {
   return value.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function normalizePlace(value?: string) {
+  return (value ?? '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\bdivision\b/g, '')
+    .replace(/\bdistrict\b/g, '')
+    .replace(/\bmetropolitan\b/g, '')
+    .replace(/\brange\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^comilla$/, 'cumilla');
+}
+
 function sameText(a?: string, b?: string) {
   if (!a || !b) return false;
-  return a.trim().toLowerCase() === b.trim().toLowerCase();
+  return normalizePlace(a) === normalizePlace(b);
 }
 
 function containsText(value: string | undefined, query: string) {
   if (!value) return false;
-  return value.toLowerCase().includes(query.toLowerCase());
+  const v = normalizePlace(value);
+  const q = normalizePlace(query);
+  return Boolean(q) && (v.includes(q) || q.includes(v));
 }
 
 function distanceKm(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
@@ -168,6 +183,38 @@ function filterBySearchText(crimes: Crime[], query: string) {
       crime.description,
     ].some((value) => containsText(value, q))
   );
+}
+
+function contextFromSubmittedReports(query: string, crimes: Crime[]): PlaceContext | null {
+  const matches = filterBySearchText(crimes, query);
+  if (matches.length === 0) return null;
+
+  const exactDistrict = matches.find((crime) => sameText(crime.location.district, query));
+  const exactDivision = matches.find((crime) => sameText(crime.location.division, query));
+  const exactArea = matches.find((crime) => sameText(crime.location.area, query));
+  const anchor = exactDistrict ?? exactDivision ?? exactArea ?? matches[0];
+  const positioned = matches.filter(
+    (crime) => Number.isFinite(Number(crime.location.latitude)) && Number.isFinite(Number(crime.location.longitude))
+  );
+  const centerRows = positioned.length > 0 ? positioned : [anchor];
+  const latitude =
+    centerRows.reduce((sum, crime) => sum + Number(crime.location.latitude), 0) / Math.max(1, centerRows.length);
+  const longitude =
+    centerRows.reduce((sum, crime) => sum + Number(crime.location.longitude), 0) / Math.max(1, centerRows.length);
+  const label =
+    anchor.location.district ||
+    anchor.location.division ||
+    anchor.location.area ||
+    query.trim();
+
+  return {
+    source: 'search',
+    label,
+    latitude,
+    longitude,
+    district: anchor.location.district,
+    division: anchor.location.division,
+  };
 }
 
 export default function AnalyticsScreen() {
@@ -267,10 +314,17 @@ export default function AnalyticsScreen() {
 
     setSearching(true);
     try {
+      const submittedContext = contextFromSubmittedReports(query, crimes);
+      if (submittedContext) {
+        setSearchedQuery(query);
+        setContext(submittedContext);
+        return;
+      }
+
       const results = await Location.geocodeAsync(`${query}, Bangladesh`);
       const first = results[0];
       if (!first) {
-        Alert.alert('No Bangladesh match', 'Try a district, division, city, or nearby landmark in Bangladesh.');
+        Alert.alert('No report match found', 'No submitted reports or Bangladesh map match were found for that search.');
         return;
       }
       setSearchedQuery(query);
@@ -604,15 +658,15 @@ const styles = StyleSheet.create({
   miniValue: { fontSize: 20, fontWeight: '900', marginTop: 5 },
   warning: { color: COLORS.warning, marginBottom: SPACING.md, textAlign: 'center', fontWeight: '700' },
   loader: { marginBottom: SPACING.md },
-  scopeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md },
+  scopeGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.md },
   scopeCard: {
-    width: '31.8%',
-    minHeight: 170,
+    width: '32%',
+    minHeight: 164,
     backgroundColor: COLORS.card,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
     borderRadius: RADIUS.md,
-    padding: SPACING.sm,
+    padding: 7,
     ...SHADOWS.card,
   },
   scopeCardHot: { borderColor: 'rgba(251, 113, 133, 0.55)', backgroundColor: 'rgba(136, 19, 55, 0.22)' },
@@ -625,9 +679,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: SPACING.sm,
   },
-  scopeTitle: { color: COLORS.text, fontSize: 13, fontWeight: '900' },
-  scopeSubtitle: { color: COLORS.textMuted, fontSize: 10, lineHeight: 14, marginTop: 3, minHeight: 28 },
-  scopeNumber: { color: COLORS.text, fontSize: 25, fontWeight: '900', marginTop: SPACING.sm },
+  scopeTitle: { color: COLORS.text, fontSize: 12, fontWeight: '900' },
+  scopeSubtitle: { color: COLORS.textMuted, fontSize: 9, lineHeight: 13, marginTop: 3, minHeight: 28 },
+  scopeNumber: { color: COLORS.text, fontSize: 23, fontWeight: '900', marginTop: SPACING.sm },
   scopeCaption: { color: COLORS.textMuted, fontSize: 10, fontWeight: '800' },
   scopeTop: { fontSize: 11, fontWeight: '900', marginTop: SPACING.sm },
   section: {
