@@ -23,5 +23,15 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 
+pnpm-debug.log*
+.DS_Store
+.env
+.env.*
+.vscode/
+.idea/
+dist/
+build/
+coverage/
+
 # @generated expo-cli
 # @end expo-cli
