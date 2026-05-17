@@ -37,8 +37,20 @@ export async function supabaseAuthMeFallback(authorization: string): Promise<Nex
     )
     .eq('id', u.id)
     .maybeSingle();
+  const { data: admin } = await supabase
+    .from('admins')
+    .select('id, status')
+    .eq('id', u.id)
+    .maybeSingle();
   const profileData = (profile ?? {}) as Record<string, unknown>;
+  const adminData = (admin ?? {}) as Record<string, unknown>;
   const metadata = u.user_metadata ?? {};
+  const metadataRole = typeof metadata.role === 'string' ? metadata.role.toUpperCase() : '';
+  const profileRole = typeof profileData.role === 'string' ? profileData.role.toUpperCase() : '';
+  const adminActive =
+    typeof adminData.status === 'string'
+      ? adminData.status.toUpperCase() !== 'DISABLED'
+      : Boolean(adminData.id);
   const name =
     (typeof profileData.full_name === 'string' && profileData.full_name.trim()) ||
     (typeof metadata.name === 'string' && metadata.name.trim()) ||
@@ -59,7 +71,7 @@ export async function supabaseAuthMeFallback(authorization: string): Promise<Nex
         (typeof profileData.avatar === 'string' ? profileData.avatar : undefined) ??
         (typeof metadata.avatar === 'string' ? metadata.avatar : undefined) ??
         undefined,
-      role: typeof profileData.role === 'string' ? profileData.role : 'USER',
+      role: adminActive || profileRole === 'ADMIN' || metadataRole === 'ADMIN' ? 'ADMIN' : 'USER',
       skills: Array.isArray(profileData.skills)
         ? profileData.skills.map(String)
         : Array.isArray(metadata.skills)

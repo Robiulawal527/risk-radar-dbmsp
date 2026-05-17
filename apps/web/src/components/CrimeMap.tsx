@@ -91,6 +91,7 @@ export interface CrimeMapProps {
   sosAlerts?: SOSRequest[];
   /** When true, parent should show an empty-state overlay instead of relying on map popups. */
   showEmptyState?: boolean;
+  onReady?: () => void;
 }
 
 export interface CrimeMapHandle {
@@ -98,16 +99,19 @@ export interface CrimeMapHandle {
   focusSquareKm2: (latitude: number, longitude: number, areaKm2?: number) => void;
   /** Nominatim order: south, north, west, east in degrees WGS84. */
   fitNominatimBoundingBox: (south: number, north: number, west: number, east: number) => void;
+  /** Remove the visible searched-area outline. */
+  clearSearchArea: () => void;
 }
 
 const CrimeMap = forwardRef<CrimeMapHandle, CrimeMapProps>(function CrimeMap(
-  { crimes, sosAlerts = [], showEmptyState = false }: CrimeMapProps,
+  { crimes, sosAlerts = [], showEmptyState = false, onReady }: CrimeMapProps,
   ref
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const heatRef = useRef<L.Layer | null>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
+  const searchAreaRef = useRef<L.Rectangle | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
 
   useEffect(() => {
@@ -119,7 +123,19 @@ const CrimeMap = forwardRef<CrimeMapHandle, CrimeMapProps>(function CrimeMap(
       const map = mapRef.current;
       if (!map) return;
       const corners = latLngSquareBoundsKm2(latitude, longitude, areaKm2);
-      map.fitBounds(L.latLngBounds(corners[0], corners[1]), {
+      const bounds = L.latLngBounds(corners[0], corners[1]);
+      if (searchAreaRef.current) {
+        map.removeLayer(searchAreaRef.current);
+      }
+      searchAreaRef.current = L.rectangle(bounds, {
+        color: '#5eead4',
+        weight: 2,
+        opacity: 0.9,
+        fillColor: '#2dd4bf',
+        fillOpacity: 0.08,
+        dashArray: '6 6',
+      }).addTo(map);
+      map.fitBounds(bounds, {
         animate: true,
         padding: [14, 14],
         maxZoom: 16,
@@ -138,6 +154,12 @@ const CrimeMap = forwardRef<CrimeMapHandle, CrimeMapProps>(function CrimeMap(
         ],
         { animate: true, padding: [20, 20], maxZoom: 17 }
       );
+    },
+    clearSearchArea() {
+      const map = mapRef.current;
+      if (!map || !searchAreaRef.current) return;
+      map.removeLayer(searchAreaRef.current);
+      searchAreaRef.current = null;
     },
   }));
 
@@ -167,6 +189,7 @@ const CrimeMap = forwardRef<CrimeMapHandle, CrimeMapProps>(function CrimeMap(
     });
 
     mapRef.current = map;
+    requestAnimationFrame(() => onReady?.());
 
     let cancelled = false;
     const tryGeolocate =
@@ -215,10 +238,18 @@ const CrimeMap = forwardRef<CrimeMapHandle, CrimeMapProps>(function CrimeMap(
         }
       }
       markersRef.current = null;
+      if (searchAreaRef.current) {
+        try {
+          map.removeLayer(searchAreaRef.current);
+        } catch {
+          /* already removed */
+        }
+      }
+      searchAreaRef.current = null;
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [onReady]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -307,7 +338,8 @@ const CrimeMap = forwardRef<CrimeMapHandle, CrimeMapProps>(function CrimeMap(
         fillColor: '#dc2626',
         fillOpacity: 0.95,
       });
-      const created = sos.createdAt instanceof Date ? sos.createdAt.toLocaleString() : String(sos.createdAt);
+      const created =
+        sos.createdAt instanceof Date ? sos.createdAt.toLocaleString() : String(sos.createdAt);
       marker.bindPopup(
         `<div class="crime-popup text-slate-100 text-sm max-w-[240px]">
           <div class="font-semibold text-white mb-1">Live SOS alert</div>

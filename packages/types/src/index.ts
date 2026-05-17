@@ -90,6 +90,7 @@ export interface SignupData {
   password: string;
   name: string;
   phone?: string;
+  role?: UserRole;
 }
 
 export interface Location {

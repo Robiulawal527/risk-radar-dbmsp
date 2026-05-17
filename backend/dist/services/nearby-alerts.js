@@ -37,12 +37,12 @@ exports.notifyUsersNearNewCrime = notifyUsersNearNewCrime;
 const database_1 = require("@risk-radar/database");
 const types_1 = require("@risk-radar/types");
 const notificationService = __importStar(require("./notification.js"));
-/** Default radius so π·r² ≈ 10 km² (user-requested “~10 km²” patch). Override with NEARBY_ALERT_RADIUS_KM. */
+/** Default nearby safety radius in kilometers. Override with NEARBY_ALERT_RADIUS_KM. */
 function defaultRadiusKm() {
     const env = process.env.NEARBY_ALERT_RADIUS_KM;
     if (env && !Number.isNaN(Number(env)))
         return Number(env);
-    return Math.sqrt(10 / Math.PI);
+    return 10;
 }
 /**
  * Notify users who opted in with a saved alert location within `radiusKm` of the new incident.

@@ -5,13 +5,30 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import type { CriminalRanking, PhilanthropistRanking } from '@/lib/types';
+import {
+  buildCriminalRankings,
+  buildVolunteerRankings,
+  fetchCriminalRecords,
+  fetchVolunteers,
+} from '@/lib/admin-data';
+import { isSupabaseConfigured } from '@/lib/supabase/client';
 import { AlertTriangle, Trophy } from 'lucide-react';
 
 export default function RankingsPage() {
   const criminalsQ = useQuery({
     queryKey: ['rankings-criminals'],
     queryFn: async () => {
-      const res = await api.get<{ success: boolean; data: CriminalRanking[] }>('/analytics/rankings/criminals');
+      if (isSupabaseConfigured()) {
+        try {
+          const rows = await fetchCriminalRecords(50);
+          if (rows.length > 0) return buildCriminalRankings(rows);
+        } catch {
+          /* Fall back to API rankings when admin tables are not available yet. */
+        }
+      }
+      const res = await api.get<{ success: boolean; data: CriminalRanking[] }>(
+        '/analytics/rankings/criminals'
+      );
       return res.data.data ?? [];
     },
   });
@@ -19,6 +36,14 @@ export default function RankingsPage() {
   const heroesQ = useQuery({
     queryKey: ['rankings-philanthropists'],
     queryFn: async () => {
+      if (isSupabaseConfigured()) {
+        try {
+          const rows = await fetchVolunteers(50);
+          if (rows.length > 0) return buildVolunteerRankings(rows);
+        } catch {
+          /* Fall back to API rankings when admin tables are not available yet. */
+        }
+      }
       const res = await api.get<{ success: boolean; data: PhilanthropistRanking[] }>(
         '/analytics/rankings/philanthropists'
       );
@@ -33,7 +58,9 @@ export default function RankingsPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-5xl font-black tracking-tighter">Community Rankings</h1>
-        <p className="text-xl text-slate-400">From your database: records and top reporters</p>
+        <p className="text-xl text-slate-400">
+          Admin-managed records, volunteers, and live database activity
+        </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -42,7 +69,9 @@ export default function RankingsPage() {
             <AlertTriangle className="h-6 w-6 text-amber-400" />
             <div>
               <div className="text-2xl font-bold">Criminal records</div>
-              <div className="text-sm text-amber-400/90">From CriminalRecord table (if populated)</div>
+              <div className="text-sm text-amber-400/90">
+                Ranked by frequency and incident intensity
+              </div>
             </div>
           </div>
 
@@ -58,12 +87,14 @@ export default function RankingsPage() {
                   className="flex items-center justify-between rounded-2xl border border-white/10 p-4 transition-colors hover:border-amber-500/25"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-8 text-3xl font-black text-amber-400/80">#{criminal.rank}</div>
+                    <div className="w-8 text-3xl font-black text-amber-400/80">
+                      #{criminal.rank}
+                    </div>
                     <div>
                       <div className="font-semibold">{criminal.criminalInfo.name}</div>
                       <div className="text-xs text-slate-400">
-                        {String(criminal.mostFrequentCrime).replace(/_/g, ' ')} • {criminal.crimeCount} linked
-                        incidents
+                        {String(criminal.mostFrequentCrime).replace(/_/g, ' ')} •{' '}
+                        {criminal.crimeCount} linked incidents
                       </div>
                     </div>
                   </div>
@@ -78,15 +109,17 @@ export default function RankingsPage() {
           <div className="mb-6 flex items-center gap-3">
             <Trophy className="h-6 w-6 text-amber-400" />
             <div>
-              <div className="text-2xl font-bold">Top reporters</div>
-              <div className="text-sm text-emerald-400">By number of submitted crime reports</div>
+              <div className="text-2xl font-bold">Volunteer ranking</div>
+              <div className="text-sm text-emerald-400">
+                Ranked by volunteering frequency and impact intensity
+              </div>
             </div>
           </div>
 
           {heroesQ.isError ? (
             <p className="text-sm text-slate-400">Could not load rankings.</p>
           ) : heroes.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400">No report activity yet.</p>
+            <p className="py-8 text-center text-sm text-slate-400">No volunteer activity yet.</p>
           ) : (
             <div className="space-y-4">
               {heroes.map((user, index) => (
@@ -97,7 +130,11 @@ export default function RankingsPage() {
                   <div className="flex items-center gap-4">
                     <div
                       className={`w-8 text-3xl font-black ${
-                        index === 0 ? 'text-yellow-400' : index === 1 ? 'text-slate-300' : 'text-orange-400'
+                        index === 0
+                          ? 'text-yellow-400'
+                          : index === 1
+                            ? 'text-slate-300'
+                            : 'text-orange-400'
                       }`}
                     >
                       #{user.rank}
@@ -105,7 +142,8 @@ export default function RankingsPage() {
                     <div>
                       <div className="font-semibold">{user.name}</div>
                       <div className="text-xs text-slate-400">
-                        {user.reportsSubmitted} reports • {(user.accuracy * 100).toFixed(0)}% score weight
+                        {user.reportsSubmitted} activities • {(user.accuracy * 10).toFixed(1)}{' '}
+                        intensity
                       </div>
                     </div>
                   </div>
@@ -120,7 +158,9 @@ export default function RankingsPage() {
         </Card>
       </div>
 
-      <div className="pt-4 text-center text-xs text-slate-500">Rankings refresh when you reload or revisit this page.</div>
+      <div className="pt-4 text-center text-xs text-slate-500">
+        Rankings refresh when you reload or revisit this page.
+      </div>
     </div>
   );
 }

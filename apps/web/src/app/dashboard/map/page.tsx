@@ -2,15 +2,16 @@
 
 import { useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CrimeMapHandle } from '@/components/CrimeMap';
+import { useCallback, useEffect, useMemo, useRef, useState, type Ref } from 'react';
+import type { CrimeMapHandle, CrimeMapProps } from '@/components/CrimeMap';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
-import { filterCrimesByAreaQuery, fetchCrimesForMapFromSupabase } from '@/lib/map-crimes';
+import { fetchCrimesForMapFromSupabase } from '@/lib/map-crimes';
+import { latLngSquareBoundsKm2 } from '@/lib/map-square-bounds';
 import { fetchActiveSosAlertsFromSupabase } from '@/lib/sos-alerts';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { nominatimSearchBangladesh } from '@/lib/nominatim-client';
@@ -18,15 +19,42 @@ import type { Crime } from '@/lib/types';
 import { Severity } from '@/lib/types';
 import { AlertTriangle, Loader2, RefreshCw, Search, X, BellRing, Radio } from 'lucide-react';
 
-const CrimeMap = dynamic(() => import('@/components/CrimeMap'), {
-  ssr: false,
-  loading: () => <div className="h-full min-h-[400px] w-full rounded-3xl bg-white/5 animate-pulse" />,
-});
+type DynamicCrimeMapProps = CrimeMapProps & {
+  forwardedRef?: Ref<CrimeMapHandle>;
+};
+
+const CrimeMap = dynamic<DynamicCrimeMapProps>(
+  () =>
+    import('@/components/CrimeMap').then((mod) => {
+      const CrimeMapComponent = mod.default;
+      function DynamicCrimeMap({ forwardedRef, ...props }: DynamicCrimeMapProps) {
+        return <CrimeMapComponent {...props} ref={forwardedRef} />;
+      }
+      return DynamicCrimeMap;
+    }),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-full min-h-[400px] w-full rounded-3xl bg-white/5 animate-pulse" />
+    ),
+  }
+);
 
 /** Debounce placename lookups to comply with courteous Nominatim usage (~1 req/sec). */
 const GEOCODE_DEBOUNCE_MS = 450;
 
 type GeocodeMode = 'manual' | 'auto';
+
+type SearchScope = {
+  query: string;
+  label: string;
+  bounds: [[number, number], [number, number]];
+};
+
+type PendingGeocodeResult = {
+  hits: Awaited<ReturnType<typeof nominatimSearchBangladesh>>;
+  queryTrimmed: string;
+};
 
 function crimesFromApiPayload(payload: unknown): Crime[] {
   if (Array.isArray(payload)) return payload as Crime[];
@@ -45,14 +73,29 @@ function severityLabel(s: Crime['severity']): string {
   return String(s);
 }
 
+function crimeIsInsideBounds(crime: Crime, bounds: SearchScope['bounds']): boolean {
+  const [[south, west], [north, east]] = bounds;
+  const { latitude, longitude } = crime.location;
+  return latitude >= south && latitude <= north && longitude >= west && longitude <= east;
+}
+
+function compactPlaceName(displayName: string, fallback: string): string {
+  const parts = displayName
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.slice(0, 3).join(', ') || fallback;
+}
+
 export default function MapPage() {
   const [searchText, setSearchText] = useState('');
-  const [selectedArea, setSelectedArea] = useState('');
+  const [searchScope, setSearchScope] = useState<SearchScope | null>(null);
   const [geocodeBusy, setGeocodeBusy] = useState(false);
   const [geoHint, setGeoHint] = useState<string | null>(null);
 
   const crimeMapRef = useRef<CrimeMapHandle | null>(null);
   const geocodeAbortRef = useRef<AbortController | null>(null);
+  const pendingGeocodeRef = useRef<PendingGeocodeResult | null>(null);
   const dataSource = isSupabaseConfigured() ? 'supabase' : 'api';
 
   const { data, isPending, isError, error, refetch, isFetching } = useQuery({
@@ -118,10 +161,10 @@ export default function MapPage() {
   }, [isError, error]);
 
   const crimes = useMemo(() => data ?? [], [data]);
-  const filteredCrimes = useMemo(
-    () => filterCrimesByAreaQuery(crimes, selectedArea),
-    [crimes, selectedArea]
-  );
+  const filteredCrimes = useMemo(() => {
+    if (!searchScope) return crimes;
+    return crimes.filter((crime) => crimeIsInsideBounds(crime, searchScope.bounds));
+  }, [crimes, searchScope]);
 
   const highRisk = useMemo(
     () =>
@@ -143,30 +186,30 @@ export default function MapPage() {
       const mapApi = crimeMapRef.current;
       if (!hits.length) return false;
       if (!mapApi) {
-        setGeoHint('Map still loading — try again in a second.');
-        return false;
+        pendingGeocodeRef.current = { hits, queryTrimmed };
+        setGeoHint('Map is loading. Search will apply automatically.');
+        return true;
       }
       const first = hits[0]!;
-
-      const bb = first.boundingBox;
-      if (
-        bb &&
-        bb.length >= 4 &&
-        [bb[0], bb[1], bb[2], bb[3]].every(Number.isFinite) &&
-        bb[1] > bb[0] &&
-        bb[3] > bb[2]
-      ) {
-        mapApi.fitNominatimBoundingBox(bb[0], bb[1], bb[2], bb[3]);
-      } else {
-        mapApi.focusSquareKm2(first.lat, first.lng);
-      }
-
-      setSelectedArea(queryTrimmed);
+      const bounds = latLngSquareBoundsKm2(first.lat, first.lng, 10);
+      mapApi.focusSquareKm2(first.lat, first.lng, 10);
+      pendingGeocodeRef.current = null;
+      setSearchScope({
+        query: queryTrimmed,
+        label: compactPlaceName(first.displayName, queryTrimmed),
+        bounds,
+      });
       setGeoHint(null);
       return true;
     },
     []
   );
+
+  const handleMapReady = useCallback(() => {
+    const pending = pendingGeocodeRef.current;
+    if (!pending) return;
+    applyHitsToMap(pending.hits, pending.queryTrimmed);
+  }, [applyHitsToMap]);
 
   const geocodeBangladeshPlace = useCallback(
     async (raw: string, mode: GeocodeMode) => {
@@ -205,7 +248,9 @@ export default function MapPage() {
           if (top) {
             toast.success('Showing place', {
               description:
-                top.displayName.length > 140 ? `${top.displayName.slice(0, 140)}…` : top.displayName,
+                top.displayName.length > 140
+                  ? `${top.displayName.slice(0, 140)}…`
+                  : top.displayName,
               duration: 4500,
             });
           }
@@ -244,7 +289,9 @@ export default function MapPage() {
   const clearFilter = () => {
     geocodeAbortRef.current?.abort();
     geocodeAbortRef.current = null;
-    setSelectedArea('');
+    pendingGeocodeRef.current = null;
+    crimeMapRef.current?.clearSearchArea();
+    setSearchScope(null);
     setSearchText('');
     setGeoHint(null);
     setGeocodeBusy(false);
@@ -262,9 +309,12 @@ export default function MapPage() {
               <Radio className="h-6 w-6 text-teal-400" />
             </div>
             <div>
-              <h1 className="text-3xl font-black tracking-tighter sm:text-4xl md:text-5xl">Live heatmap</h1>
+              <h1 className="text-3xl font-black tracking-tighter sm:text-4xl md:text-5xl">
+                Live heatmap
+              </h1>
               <p className="mt-1 text-base text-slate-400 sm:text-lg md:text-xl">
-                Crime intensity and incidents{isSupabaseConfigured() ? ' from your Supabase database' : ' across Dhaka'}
+                Crime intensity and incidents
+                {isSupabaseConfigured() ? ' from your Supabase database' : ' across Dhaka'}
               </p>
             </div>
           </div>
@@ -283,16 +333,16 @@ export default function MapPage() {
             LIVE
           </Badge>
           <div className="text-slate-400">
-                {isError ? (
-                  <span className="text-amber-400">Data unavailable</span>
-                ) : (
-                  <>
-                    {filteredCrimes.length}
-                    {selectedArea ? ` match` : ` incidents`}
-                    {selectedArea ? '' : ` • ${highRisk} high risk`}
-                    {activeSosAlerts.length ? ` • ${activeSosAlerts.length} live SOS` : ''}
-                  </>
-                )}
+            {isError ? (
+              <span className="text-amber-400">Data unavailable</span>
+            ) : (
+              <>
+                {filteredCrimes.length}
+                {searchScope ? ` in area` : ` incidents`}
+                {searchScope ? ` • 10 km² search` : ` • ${highRisk} high risk`}
+                {activeSosAlerts.length ? ` • ${activeSosAlerts.length} live SOS` : ''}
+              </>
+            )}
           </div>
           {isSupabaseConfigured() && (
             <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
@@ -316,9 +366,10 @@ export default function MapPage() {
                       {' '}
                       — ensure a table like <code className="text-slate-300">crimes</code> or{' '}
                       <code className="text-slate-300">Crime</code> exists, RLS allows{' '}
-                      <code className="text-slate-300">SELECT</code> for the anon key, and optionally set{' '}
-                      <code className="text-slate-300">NEXT_PUBLIC_SUPABASE_CRIME_TABLE</code> (comma-separated
-                      fallbacks).
+                      <code className="text-slate-300">SELECT</code> for the anon key, and
+                      optionally set{' '}
+                      <code className="text-slate-300">NEXT_PUBLIC_SUPABASE_CRIME_TABLE</code>{' '}
+                      (comma-separated fallbacks).
                     </>
                   )}
                 </p>
@@ -344,13 +395,13 @@ export default function MapPage() {
           </div>
         ) : null}
         <div className="space-y-4 xl:col-span-3">
-          <Card className="glass-panel">
-            <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
-              <Search className="h-4 w-4" aria-hidden />
-              Bangladesh place search
+          <Card className="glass-panel rounded-2xl">
+            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
+              <Search className="h-4 w-4 text-teal-300" aria-hidden />
+              Search area
             </div>
-            <p className="mb-2 text-xs text-slate-500">
-              OpenStreetMap Nominatim (country BD). Matches move the heatmap viewport; incidents list filters by keyword.
+            <p className="mb-3 text-xs leading-relaxed text-slate-400">
+              Search any Bangladesh place to center the map on a 10 km² safety view.
             </p>
             <div className="flex gap-2">
               <Input
@@ -369,7 +420,11 @@ export default function MapPage() {
                 disabled={geocodeBusy}
                 aria-label="Search place and zoom map"
               >
-                {geocodeBusy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Search className="h-4 w-4" />}
+                {geocodeBusy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                ) : (
+                  <Search className="h-4 w-4" />
+                )}
               </Button>
             </div>
 
@@ -385,15 +440,18 @@ export default function MapPage() {
               </p>
             ) : null}
 
-            {selectedArea ? (
-              <div className="mt-3 flex items-center justify-between rounded-xl bg-white/5 px-3 py-2 text-xs">
-                <span className="text-slate-400">
-                  Filtering: <span className="font-semibold text-teal-400">{selectedArea}</span>
-                </span>
+            {searchScope ? (
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-teal-400/20 bg-teal-400/10 px-3 py-2 text-xs">
+                <div className="min-w-0">
+                  <div className="truncate font-semibold text-teal-100">{searchScope.label}</div>
+                  <div className="mt-0.5 text-[10px] uppercase tracking-wide text-teal-200/60">
+                    10 km² mapped area
+                  </div>
+                </div>
                 <button
                   type="button"
                   onClick={clearFilter}
-                  className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+                  className="shrink-0 rounded-lg p-1 text-teal-100/70 hover:bg-white/10 hover:text-white"
                   aria-label="Clear area filter"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -402,21 +460,7 @@ export default function MapPage() {
             ) : null}
           </Card>
 
-          <Card className="glass-panel">
-            <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Heat intensity
-            </div>
-            <p className="mb-3 text-xs text-slate-400">
-              Warmer colors = higher weighted severity (critical and high incidents contribute more).
-            </p>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-gradient-to-r from-slate-800 via-teal-600 to-violet-500" />
-            <div className="mt-1 flex justify-between text-[10px] text-slate-500">
-              <span>Lower</span>
-              <span>Higher</span>
-            </div>
-          </Card>
-
-          <Card className="glass-panel">
+          <Card className="glass-panel rounded-2xl">
             <div className="mb-4 flex items-center gap-2 text-amber-400">
               <BellRing className="h-5 w-5" aria-hidden />
               <div className="font-semibold">High priority</div>
@@ -430,7 +474,9 @@ export default function MapPage() {
                   ))}
                 </div>
               ) : highPriorityList.length === 0 ? (
-                <p className="text-xs text-slate-500">No high or critical incidents in the current view.</p>
+                <p className="text-xs text-slate-500">
+                  No high or critical incidents in this area.
+                </p>
               ) : (
                 highPriorityList.map((crime) => (
                   <div
@@ -439,7 +485,9 @@ export default function MapPage() {
                   >
                     <div className="font-medium text-white">{crime.title}</div>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                      <span>{crime.location.area ?? crime.location.district ?? 'Location unknown'}</span>
+                      <span>
+                        {crime.location.area ?? crime.location.district ?? 'Location unknown'}
+                      </span>
                       <span className="rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-200/90">
                         {severityLabel(crime.severity)}
                       </span>
@@ -469,8 +517,8 @@ export default function MapPage() {
                 <div className="glass max-w-md rounded-2xl px-6 py-5 text-center shadow-2xl">
                   <p className="text-sm font-medium text-white">No incidents in this view</p>
                   <p className="mt-2 text-xs text-slate-400">
-                    {selectedArea
-                      ? 'Try clearing the filter or a different search.'
+                    {searchScope
+                      ? 'Try clearing the search or choosing a nearby place.'
                       : isSupabaseConfigured()
                         ? 'Add rows to the Crime table or relax RLS policies for reads.'
                         : 'Reports will appear here when your API returns data.'}
@@ -481,10 +529,11 @@ export default function MapPage() {
 
             {!isError ? (
               <CrimeMap
-                ref={crimeMapRef}
+                forwardedRef={crimeMapRef}
                 crimes={filteredCrimes}
                 sosAlerts={activeSosAlerts}
                 showEmptyState={showEmptyOverlay}
+                onReady={handleMapReady}
               />
             ) : (
               <div className="flex h-full min-h-[420px] items-center justify-center bg-[#0a1020] text-slate-500">

@@ -3,7 +3,18 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Shield, Map, BarChart3, AlertTriangle, Users, Award, Settings, LogOut, Bell } from 'lucide-react';
+import {
+  Shield,
+  Map,
+  BarChart3,
+  AlertTriangle,
+  Users,
+  Award,
+  Settings,
+  LogOut,
+  Bell,
+  SlidersHorizontal,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/auth';
 import { motion } from 'framer-motion';
@@ -17,6 +28,7 @@ const navItems = [
   { href: '/dashboard/sos', label: 'Emergency SOS', icon: Shield },
   { href: '/dashboard/social-radar', label: 'Social Radar', icon: Users },
   { href: '/dashboard/rankings', label: 'Rankings', icon: Award },
+  { href: '/dashboard/admin', label: 'Admin', icon: SlidersHorizontal, adminOnly: true },
   { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -68,21 +80,36 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
-          <div className="px-4 py-2 text-xs font-semibold tracking-widest text-slate-500">COMMAND CENTER</div>
+          <div className="px-4 py-2 text-xs font-semibold tracking-widest text-slate-500">
+            COMMAND CENTER
+          </div>
 
           <nav className="mt-2 space-y-1">
-            {navItems.map((item) => {
-              const isActive = pathname === item.href;
-              return (
-                <Link key={item.href} href={item.href} className={`nav-link group ${isActive ? 'active' : ''}`}>
-                  <item.icon className={`h-5 w-5 ${isActive ? 'text-teal-300' : 'text-slate-400 group-hover:text-white'}`} />
-                  <span>{item.label}</span>
-                  {isActive && (
-                    <motion.div layoutId="activeIndicator" className="ml-auto h-1.5 w-1.5 rounded-full bg-teal-400" />
-                  )}
-                </Link>
-              );
-            })}
+            {navItems
+              .filter(
+                (item) => !item.adminOnly || String(user?.role ?? '').toUpperCase() === 'ADMIN'
+              )
+              .map((item) => {
+                const isActive = pathname === item.href;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`nav-link group ${isActive ? 'active' : ''}`}
+                  >
+                    <item.icon
+                      className={`h-5 w-5 ${isActive ? 'text-teal-300' : 'text-slate-400 group-hover:text-white'}`}
+                    />
+                    <span>{item.label}</span>
+                    {isActive && (
+                      <motion.div
+                        layoutId="activeIndicator"
+                        className="ml-auto h-1.5 w-1.5 rounded-full bg-teal-400"
+                      />
+                    )}
+                  </Link>
+                );
+              })}
           </nav>
 
           <div className="mt-10 px-4">
@@ -91,7 +118,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <div className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
                 CONNECTED
               </div>
-              <div className="mt-2 text-slate-400">Live data from your configured API and database.</div>
+              <div className="mt-2 text-slate-400">
+                Live data from your configured API and database.
+              </div>
             </div>
           </div>
         </div>
@@ -109,7 +138,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               variant="ghost"
               size="icon"
               onClick={() => {
-                getSupabaseBrowserClient()?.auth.signOut().catch(() => {});
+                getSupabaseBrowserClient()
+                  ?.auth.signOut()
+                  .catch(() => {});
                 logout();
                 window.location.href = '/';
               }}
@@ -130,12 +161,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
             <div className="hidden text-sm text-slate-400 lg:block">
               Dhaka, Bangladesh •{' '}
-              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+              {new Date().toLocaleDateString('en-US', {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric',
+              })}
             </div>
           </div>
 
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" className="relative" type="button" aria-label="Notifications">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative"
+              type="button"
+              aria-label="Notifications"
+            >
               <Bell className="h-5 w-5" />
               {unread > 0 ? (
                 <div className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-violet-500 px-1 text-[10px] font-semibold">
@@ -159,19 +200,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <div className="flex-1 overflow-auto bg-[#070b14] p-8">
           <div className="mb-4 flex gap-2 overflow-x-auto pb-1 lg:hidden">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium ${
-                  pathname === item.href
-                    ? 'border-teal-500/40 bg-teal-950/30 text-teal-200'
-                    : 'border-white/10 bg-white/5 text-slate-300'
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
+            {navItems
+              .filter(
+                (item) => !item.adminOnly || String(user?.role ?? '').toUpperCase() === 'ADMIN'
+              )
+              .map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium ${
+                    pathname === item.href
+                      ? 'border-teal-500/40 bg-teal-950/30 text-teal-200'
+                      : 'border-white/10 bg-white/5 text-slate-300'
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              ))}
           </div>
           <div className="mx-auto max-w-7xl">{children}</div>
         </div>

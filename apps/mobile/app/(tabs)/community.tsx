@@ -1,9 +1,18 @@
 import React, { useState } from 'react';
-import { Alert, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  Linking,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { MaterialIcons } from '@expo/vector-icons';
-import type { CriminalRanking, PhilanthropistRanking, SocialRadarMatch } from '@risk-radar/types';
-import { api } from '@/lib/api';
+import type { SocialRadarMatch } from '@risk-radar/types';
+import { fetchCommunityRankings } from '@/lib/rankings';
 import { searchProfilesBySkill } from '@/lib/supabase-data';
 import { useAuthStore } from '@/store/auth';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../constants/theme';
@@ -24,16 +33,9 @@ export default function CommunityScreen() {
 
   const { data: rankings, isError: rankingsError } = useQuery({
     queryKey: ['community-rankings'],
-    queryFn: async () => {
-      const [criminals, philanthropists] = await Promise.all([
-        api.get<{ success: boolean; data: CriminalRanking[] }>('/analytics/rankings/criminals'),
-        api.get<{ success: boolean; data: PhilanthropistRanking[] }>('/analytics/rankings/philanthropists'),
-      ]);
-      return {
-        criminals: criminals.data.data ?? [],
-        philanthropists: philanthropists.data.data ?? [],
-      };
-    },
+    queryFn: fetchCommunityRankings,
+    staleTime: 20_000,
+    refetchInterval: 60_000,
   });
 
   const savedSkills = user?.skills ?? [];
@@ -54,14 +56,20 @@ export default function CommunityScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.headerPanel}>
         <View style={styles.headerIcon}>
           <MaterialIcons name="groups" size={26} color={COLORS.accent} />
         </View>
         <View style={styles.headerCopy}>
           <Text style={styles.title}>Community</Text>
-          <Text style={styles.subtitle}>Find skilled helpers, top reporters, and verified records</Text>
+          <Text style={styles.subtitle}>
+            Find skilled helpers, top reporters, and verified records
+          </Text>
         </View>
       </View>
 
@@ -76,14 +84,22 @@ export default function CommunityScreen() {
             onChangeText={setSkillSearch}
             onSubmitEditing={() => runSearch()}
           />
-          <TouchableOpacity style={styles.searchButton} onPress={() => runSearch()} disabled={matchMutation.isPending}>
+          <TouchableOpacity
+            style={styles.searchButton}
+            onPress={() => runSearch()}
+            disabled={matchMutation.isPending}
+          >
             <MaterialIcons name="search" size={22} color={COLORS.bg} />
           </TouchableOpacity>
         </View>
         {savedSkills.length > 0 ? (
           <View style={styles.tags}>
             {savedSkills.map((skill) => (
-              <TouchableOpacity key={skill} style={styles.skillChip} onPress={() => runSearch(skill)}>
+              <TouchableOpacity
+                key={skill}
+                style={styles.skillChip}
+                onPress={() => runSearch(skill)}
+              >
                 <Text style={styles.skillText}>{skill}</Text>
               </TouchableOpacity>
             ))}
@@ -106,11 +122,17 @@ export default function CommunityScreen() {
             <View key={match.id || match.userId} style={styles.matchCard}>
               <View style={styles.matchHeader}>
                 <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{(match.name || match.email || '?')[0].toUpperCase()}</Text>
+                  <Text style={styles.avatarText}>
+                    {(match.name || match.email || '?')[0].toUpperCase()}
+                  </Text>
                 </View>
                 <View style={styles.matchInfo}>
-                  <Text style={styles.matchName} numberOfLines={1}>{match.name}</Text>
-                  <Text style={styles.matchEmail} numberOfLines={1}>{match.email}</Text>
+                  <Text style={styles.matchName} numberOfLines={1}>
+                    {match.name}
+                  </Text>
+                  <Text style={styles.matchEmail} numberOfLines={1}>
+                    {match.email}
+                  </Text>
                   <View style={styles.verifiedRow}>
                     <MaterialIcons name="check-circle" size={13} color={COLORS.accent} />
                     <Text style={styles.verifiedText}>Verified Profile</Text>
@@ -134,12 +156,21 @@ export default function CommunityScreen() {
                   disabled={!match.phone}
                   onPress={() => match.phone && openLink(`tel:${match.phone}`)}
                 >
-                  <MaterialIcons name="phone" size={17} color={match.phone ? COLORS.bg : COLORS.textMuted} />
-                  <Text style={[styles.contactButtonText, !match.phone && styles.contactDisabledText]}>
+                  <MaterialIcons
+                    name="phone"
+                    size={17}
+                    color={match.phone ? COLORS.bg : COLORS.textMuted}
+                  />
+                  <Text
+                    style={[styles.contactButtonText, !match.phone && styles.contactDisabledText]}
+                  >
                     {match.phone ? 'Call' : 'No Phone'}
                   </Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.emailButton} onPress={() => openLink(`mailto:${match.email}`)}>
+                <TouchableOpacity
+                  style={styles.emailButton}
+                  onPress={() => openLink(`mailto:${match.email}`)}
+                >
                   <MaterialIcons name="mail" size={17} color={COLORS.text} />
                   <Text style={styles.emailButtonText}>Email</Text>
                 </TouchableOpacity>
@@ -154,10 +185,12 @@ export default function CommunityScreen() {
           <View style={styles.sectionIconGold}>
             <MaterialIcons name="emoji-events" size={18} color="#fbbf24" />
           </View>
-          <Text style={styles.sectionTitle}>Top Reporters</Text>
+          <Text style={styles.sectionTitle}>Volunteer Ranking</Text>
         </View>
         {rankingsError ? <Text style={styles.emptyText}>Could not load rankings.</Text> : null}
-        {(rankings?.philanthropists ?? []).length === 0 && !rankingsError ? <Text style={styles.emptyText}>No report activity yet.</Text> : null}
+        {(rankings?.philanthropists ?? []).length === 0 && !rankingsError ? (
+          <Text style={styles.emptyText}>No volunteer activity yet.</Text>
+        ) : null}
         {rankings?.philanthropists?.slice(0, 5).map((champ) => (
           <View key={champ.userId} style={styles.championCard}>
             <View style={styles.rankBadge}>
@@ -165,7 +198,9 @@ export default function CommunityScreen() {
             </View>
             <View style={styles.rankInfo}>
               <Text style={styles.championName}>{champ.name}</Text>
-              <Text style={styles.championStats}>{champ.reportsSubmitted} reports • {Math.round(champ.accuracy * 100)}% accuracy</Text>
+              <Text style={styles.championStats}>
+                {champ.reportsSubmitted} activities • {(champ.accuracy * 10).toFixed(1)} intensity
+              </Text>
             </View>
           </View>
         ))}
@@ -178,17 +213,31 @@ export default function CommunityScreen() {
           </View>
           <Text style={styles.sectionTitle}>Criminal Records</Text>
         </View>
-        {(rankings?.criminals ?? []).length === 0 && !rankingsError ? <Text style={styles.emptyText}>No criminal records yet.</Text> : null}
+        {(rankings?.criminals ?? []).length === 0 && !rankingsError ? (
+          <Text style={styles.emptyText}>No criminal records yet.</Text>
+        ) : null}
         {rankings?.criminals?.slice(0, 5).map((criminal) => (
           <View key={`${criminal.rank}-${criminal.criminalInfo.name}`} style={styles.criminalCard}>
             <View style={styles.criminalHeader}>
-              <Text style={styles.criminalName} numberOfLines={1}>#{criminal.rank} {criminal.criminalInfo.name}</Text>
-              <View style={[styles.dangerBadge, criminal.dangerLevel === 'CRITICAL' ? styles.criticalBadge : styles.highBadge]}>
+              <Text style={styles.criminalName} numberOfLines={1}>
+                #{criminal.rank} {criminal.criminalInfo.name}
+              </Text>
+              <View
+                style={[
+                  styles.dangerBadge,
+                  criminal.dangerLevel === 'CRITICAL' ? styles.criticalBadge : styles.highBadge,
+                ]}
+              >
                 <Text style={styles.dangerText}>{criminal.dangerLevel}</Text>
               </View>
             </View>
-            <Text style={styles.criminalDesc} numberOfLines={3}>{criminal.criminalInfo.description}</Text>
-            <Text style={styles.criminalStats}>{criminal.crimeCount} linked incidents • {String(criminal.mostFrequentCrime).replace(/_/g, ' ')}</Text>
+            <Text style={styles.criminalDesc} numberOfLines={3}>
+              {criminal.criminalInfo.description}
+            </Text>
+            <Text style={styles.criminalStats}>
+              {criminal.crimeCount} linked incidents •{' '}
+              {String(criminal.mostFrequentCrime).replace(/_/g, ' ')}
+            </Text>
           </View>
         ))}
       </View>
@@ -222,24 +271,96 @@ const styles = StyleSheet.create({
   headerCopy: { flex: 1 },
   title: { ...TYPOGRAPHY.h1, color: COLORS.text },
   subtitle: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19, marginTop: 4 },
-  searchCard: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: 22, padding: SPACING.md, marginBottom: SPACING.xl, ...SHADOWS.card },
+  searchCard: {
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    borderRadius: 22,
+    padding: SPACING.md,
+    marginBottom: SPACING.xl,
+    ...SHADOWS.card,
+  },
   label: { color: COLORS.textMuted, fontSize: 11, fontWeight: '900', marginBottom: SPACING.sm },
   searchRow: { flexDirection: 'row', gap: SPACING.sm },
-  searchInput: { flex: 1, backgroundColor: '#111827', borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: RADIUS.full, color: COLORS.text, paddingHorizontal: SPACING.md, minHeight: 48 },
-  searchButton: { width: 48, height: 48, borderRadius: 24, backgroundColor: COLORS.accent, alignItems: 'center', justifyContent: 'center' },
+  searchInput: {
+    flex: 1,
+    backgroundColor: '#111827',
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    borderRadius: RADIUS.full,
+    color: COLORS.text,
+    paddingHorizontal: SPACING.md,
+    minHeight: 48,
+  },
+  searchButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: SPACING.sm },
-  skillChip: { borderWidth: 1, borderColor: COLORS.cardBorder, backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.full },
+  skillChip: {
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
+  },
   skillText: { color: COLORS.text, fontSize: 12, fontWeight: '700' },
   section: { marginBottom: SPACING.xl },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md },
-  sectionIconPurple: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(139,92,246,0.16)', alignItems: 'center', justifyContent: 'center' },
-  sectionIconGold: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(251,191,36,0.14)', alignItems: 'center', justifyContent: 'center' },
-  sectionIconRed: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,46,99,0.14)', alignItems: 'center', justifyContent: 'center' },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  sectionIconPurple: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(139,92,246,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionIconGold: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(251,191,36,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionIconRed: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255,46,99,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   sectionTitle: { ...TYPOGRAPHY.h3, color: COLORS.text },
   emptyText: { color: COLORS.textMuted, textAlign: 'center', paddingVertical: SPACING.lg },
-  matchCard: { backgroundColor: COLORS.card, borderRadius: 22, padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 1, borderColor: COLORS.cardBorder, ...SHADOWS.card },
+  matchCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 22,
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    ...SHADOWS.card,
+  },
   matchHeader: { flexDirection: 'row', alignItems: 'center' },
-  avatar: { width: 54, height: 54, borderRadius: RADIUS.md, backgroundColor: '#8b5cf6', justifyContent: 'center', alignItems: 'center' },
+  avatar: {
+    width: 54,
+    height: 54,
+    borderRadius: RADIUS.md,
+    backgroundColor: '#8b5cf6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   avatarText: { color: '#fff', fontSize: 22, fontWeight: '900' },
   matchInfo: { flex: 1, marginLeft: SPACING.md },
   matchName: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
@@ -250,20 +371,67 @@ const styles = StyleSheet.create({
   tagText: { color: COLORS.text, fontSize: 11, fontWeight: '600' },
   muted: { color: COLORS.textMuted, fontSize: 12, fontStyle: 'italic' },
   contactRow: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
-  contactButton: { flex: 1, backgroundColor: COLORS.accent, borderRadius: RADIUS.sm, paddingVertical: 11, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
+  contactButton: {
+    flex: 1,
+    backgroundColor: COLORS.accent,
+    borderRadius: RADIUS.sm,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
   contactDisabled: { backgroundColor: 'rgba(255,255,255,0.05)' },
   contactButtonText: { color: COLORS.bg, fontWeight: '900' },
   contactDisabledText: { color: COLORS.textMuted },
-  emailButton: { flex: 1, borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: RADIUS.sm, paddingVertical: 11, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
+  emailButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    borderRadius: RADIUS.sm,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
   emailButtonText: { color: COLORS.text, fontWeight: '800' },
-  championCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.card, padding: SPACING.md, borderRadius: 18, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.cardBorder },
-  rankBadge: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#fbbf24', justifyContent: 'center', alignItems: 'center' },
+  championCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    padding: SPACING.md,
+    borderRadius: 18,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  rankBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#fbbf24',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   rankText: { color: COLORS.bg, fontWeight: '900', fontSize: 12 },
   rankInfo: { flex: 1, marginLeft: SPACING.md },
   championName: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
   championStats: { color: COLORS.textMuted, fontSize: 11, marginTop: 2 },
-  criminalCard: { backgroundColor: COLORS.card, padding: SPACING.md, borderRadius: 18, marginBottom: SPACING.sm, borderLeftWidth: 4, borderLeftColor: COLORS.danger },
-  criminalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: SPACING.sm },
+  criminalCard: {
+    backgroundColor: COLORS.card,
+    padding: SPACING.md,
+    borderRadius: 18,
+    marginBottom: SPACING.sm,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.danger,
+  },
+  criminalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
   criminalName: { color: COLORS.text, fontSize: 15, fontWeight: '800', flex: 1 },
   dangerBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   criticalBadge: { backgroundColor: COLORS.danger },

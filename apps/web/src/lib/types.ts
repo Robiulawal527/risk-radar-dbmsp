@@ -44,6 +44,7 @@ export interface Crime {
   severity: Severity;
   reportedBy: string;
   status: string;
+  criminalInfo?: any[];
   dateTime: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -88,8 +89,11 @@ export interface CriminalRanking {
   rank: number;
   criminalInfo: {
     name: string;
+    age?: number;
+    gender?: string;
     knownAliases: string[];
     description: string;
+    photoUrl?: string;
     status: string;
   };
   crimeCount: number;

@@ -40,6 +40,7 @@ const database_1 = require("@risk-radar/database");
 const config_1 = require("@risk-radar/config");
 const app_js_1 = require("./app.js");
 const sosService = __importStar(require("./services/sos.js"));
+/** Boots the Express API and Socket.IO bridge after confirming the database is reachable. */
 async function main() {
     await database_1.pool.query('SELECT 1');
     console.log('✅ Database connected');
@@ -62,7 +63,7 @@ async function main() {
         });
         socket.on('sos:update', async (data, callback) => {
             try {
-                const sosRequest = await sosService.updateSOSStatus(data.id, data.status);
+                const sosRequest = await sosService.updateSOSStatus(data.id, data.userId, data.status);
                 io.emit('sos:updated', sosRequest);
                 callback?.({ success: true, data: sosRequest });
             }

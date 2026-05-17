@@ -12,10 +12,14 @@ import axios from 'axios';
 import { api } from '@/lib/api';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { mapAuthUser, type AuthTokenResponse } from '@/lib/auth-session';
+import { UserRole } from '@/lib/types';
+
+type AccountMode = 'USER' | 'ADMIN';
 
 function LoginInner() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [accountMode, setAccountMode] = useState<AccountMode>('USER');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -25,11 +29,24 @@ function LoginInner() {
     const meRes = await api.get<{ success: boolean; data: Record<string, unknown> }>('/auth/me', {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    setSession(accessToken, mapAuthUser(meRes.data.data));
+    const authUser = mapAuthUser(meRes.data.data);
+    if (accountMode === 'ADMIN' && authUser.role !== UserRole.ADMIN) {
+      getSupabaseBrowserClient()
+        ?.auth.signOut()
+        .catch(() => {});
+      throw new Error('This account is not registered as an admin.');
+    }
+    setSession(accessToken, authUser);
 
-    toast.success('Welcome back');
+    toast.success(accountMode === 'ADMIN' ? 'Welcome back, admin' : 'Welcome back');
     const next = searchParams.get('next');
-    router.push(next && next.startsWith('/') ? next : '/dashboard/map');
+    router.push(
+      next && next.startsWith('/')
+        ? next
+        : accountMode === 'ADMIN'
+          ? '/dashboard/admin'
+          : '/dashboard/map'
+    );
   };
 
   const loginWithBackend = async () => {
@@ -99,6 +116,28 @@ function LoginInner() {
         <div className="glass-panel">
           <form onSubmit={handleLogin} className="space-y-5">
             <div>
+              <label className="mb-2 block text-xs tracking-widest text-slate-400">
+                ACCOUNT TYPE
+              </label>
+              <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/5 p-1">
+                {(['USER', 'ADMIN'] as AccountMode[]).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setAccountMode(mode)}
+                    className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                      accountMode === mode
+                        ? 'bg-white text-slate-950'
+                        : 'text-slate-300 hover:bg-white/10'
+                    }`}
+                  >
+                    {mode === 'ADMIN' ? 'Admin' : 'User'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
               <label className="mb-2 block text-xs tracking-widest text-slate-400">EMAIL</label>
               <Input
                 type="email"
@@ -123,7 +162,11 @@ function LoginInner() {
             </div>
 
             <Button type="submit" className="premium-button mt-4 h-12 w-full" disabled={loading}>
-              {loading ? 'SIGNING IN…' : 'SIGN IN TO RISK RADAR'}
+              {loading
+                ? 'SIGNING IN…'
+                : accountMode === 'ADMIN'
+                  ? 'SIGN IN AS ADMIN'
+                  : 'SIGN IN TO RISK RADAR'}
             </Button>
           </form>
 

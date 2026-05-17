@@ -46,6 +46,7 @@ const supabase_js_1 = require("@supabase/supabase-js");
 const crypto_1 = require("crypto");
 const database_1 = require("@risk-radar/database");
 const config_1 = require("@risk-radar/config");
+const types_1 = require("@risk-radar/types");
 const http_error_js_1 = require("../lib/http-error.js");
 const supabase = (0, supabase_js_1.createClient)(config_1.config.supabase.url, config_1.config.supabase.serviceRoleKey || config_1.config.supabase.anonKey);
 function toUser(row) {
@@ -63,11 +64,20 @@ async function signup(signupData) {
         throw new http_error_js_1.HttpError(409, 'User already exists');
     }
     const hashedPassword = await bcrypt.hash(signupData.password, 10);
+    const requestedRole = signupData.role === types_1.UserRole.ADMIN
+        ? types_1.UserRole.ADMIN
+        : types_1.UserRole.USER;
     const row = await (0, database_1.queryOne)(`INSERT INTO "User" (email, password, name, phone, role, "createdAt", "updatedAt")
-     VALUES ($1, $2, $3, $4, 'USER', NOW(), NOW())
-     RETURNING *`, [signupData.email, hashedPassword, signupData.name, signupData.phone ?? null]);
+     VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+     RETURNING *`, [signupData.email, hashedPassword, signupData.name, signupData.phone ?? null, requestedRole]);
     if (!row)
         throw new http_error_js_1.HttpError(500, 'Failed to create user');
+    if (requestedRole === types_1.UserRole.ADMIN) {
+        await (0, database_1.query)(`INSERT INTO admins (id, email, name, "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE
+         SET email = EXCLUDED.email, name = EXCLUDED.name, "updatedAt" = NOW()`, [row.id, row.email, row.name]).catch(() => undefined);
+    }
     return generateTokens(row.id, row.email);
 }
 async function login(credentials) {
@@ -97,6 +107,7 @@ async function validateSupabaseToken(accessToken) {
     }
     const supabaseUser = data.user;
     let profile = null;
+    let adminRecord = null;
     try {
         profile = await (0, database_1.queryOne)(`SELECT full_name, phone, avatar, role, skills,
         alert_latitude AS "alertLatitude",
@@ -108,6 +119,16 @@ async function validateSupabaseToken(accessToken) {
     catch {
         // Missing table, wrong name, or DB mismatch — still create/sync local User from Supabase + metadata.
     }
+    try {
+        adminRecord = await (0, database_1.queryOne)(`SELECT id FROM admins WHERE id = $1 OR email = $2`, [supabaseUser.id, supabaseUser.email]);
+    }
+    catch {
+        // The admins table is optional in older deployments.
+    }
+    const metadataRole = String(supabaseUser.user_metadata?.role ?? '').toUpperCase();
+    const resolvedRole = adminRecord || profile?.role === types_1.UserRole.ADMIN || metadataRole === types_1.UserRole.ADMIN
+        ? types_1.UserRole.ADMIN
+        : types_1.UserRole.USER;
     let localUser = await (0, database_1.queryOne)('SELECT * FROM "User" WHERE email = $1', [
         supabaseUser.email,
     ]);
@@ -122,25 +143,26 @@ async function validateSupabaseToken(accessToken) {
          id, email, password, name, phone, role, skills,
          "alertLatitude", "alertLongitude", "alertsEnabled", "createdAt", "updatedAt"
        )
-       VALUES ($1, $2, $3, $4, $5, 'USER', $6, $7, $8, COALESCE($9, true), NOW(), NOW())
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, true), NOW(), NOW())
        RETURNING *`, [
             supabaseUser.id,
             supabaseUser.email,
             hashedPassword,
             name,
             phone,
+            resolvedRole,
             profile?.skills ?? [],
             profile?.alertLatitude ?? null,
             profile?.alertLongitude ?? null,
             profile?.alertsEnabled ?? true,
         ]);
     }
-    else if (profile) {
+    else if (profile || resolvedRole === types_1.UserRole.ADMIN) {
         localUser = await (0, database_1.queryOne)(`UPDATE "User"
        SET name = COALESCE($2, name),
            phone = COALESCE($3, phone),
            avatar = COALESCE($4, avatar),
-           role = COALESCE($5, role),
+           role = $5,
            skills = COALESCE($6, skills),
            "alertLatitude" = COALESCE($7, "alertLatitude"),
            "alertLongitude" = COALESCE($8, "alertLongitude"),
@@ -149,14 +171,14 @@ async function validateSupabaseToken(accessToken) {
        WHERE id = $1
        RETURNING *`, [
             localUser.id,
-            profile.full_name,
-            profile.phone,
-            profile.avatar,
-            profile.role,
-            profile.skills,
-            profile.alertLatitude,
-            profile.alertLongitude,
-            profile.alertsEnabled,
+            profile?.full_name ?? null,
+            profile?.phone ?? null,
+            profile?.avatar ?? null,
+            resolvedRole,
+            profile?.skills ?? null,
+            profile?.alertLatitude ?? null,
+            profile?.alertLongitude ?? null,
+            profile?.alertsEnabled ?? null,
         ]);
     }
     if (!localUser)

@@ -35,26 +35,40 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sosRouter = void 0;
 const express_1 = require("express");
+const types_1 = require("@risk-radar/types");
 const sosService = __importStar(require("../services/sos.js"));
 const async_handler_js_1 = require("../lib/async-handler.js");
 const auth_js_1 = require("../middleware/auth.js");
 exports.sosRouter = (0, express_1.Router)();
 exports.sosRouter.use(auth_js_1.requireAuth);
+// Returns every active SOS so maps and realtime dashboards can show only unresolved emergencies.
 exports.sosRouter.get('/active', (0, async_handler_js_1.asyncHandler)(async (_req, res) => {
     const requests = await sosService.getActiveSOSRequests();
     res.json({ success: true, data: requests });
 }));
+// Returns the signed-in user's SOS history, including resolved alerts for accountability.
 exports.sosRouter.get('/user', (0, async_handler_js_1.asyncHandler)(async (req, res) => {
     const requests = await sosService.getUserSOSRequests(req.user.id);
     res.json({ success: true, data: requests });
 }));
+// Creates a new active SOS using the authenticated user id rather than trusting client-supplied ownership.
 exports.sosRouter.post('/', (0, async_handler_js_1.asyncHandler)(async (req, res) => {
     const { location, message } = req.body;
     const sosRequest = await sosService.createSOSRequest(req.user.id, location, message);
     res.json({ success: true, data: sosRequest });
 }));
+// Updates status for an owned SOS row; ownership is enforced in the service query.
 exports.sosRouter.put('/:id/status', (0, async_handler_js_1.asyncHandler)(async (req, res) => {
-    const sosRequest = await sosService.updateSOSStatus(req.params.id, req.body.status);
+    const sosRequest = await sosService.updateSOSStatus(req.params.id, req.user.id, req.body.status);
     res.json({ success: true, data: sosRequest });
+}));
+// Soft-deletes an owned SOS by resolving it, which removes it from active feeds without destroying history.
+exports.sosRouter.delete('/:id', (0, async_handler_js_1.asyncHandler)(async (req, res) => {
+    const sosRequest = await sosService.resolveSOSRequest(req.params.id, req.user.id);
+    res.json({
+        success: true,
+        data: sosRequest,
+        message: sosRequest.status === types_1.SOSStatus.RESOLVED ? 'SOS resolved' : 'SOS updated',
+    });
 }));
 //# sourceMappingURL=sos.js.map

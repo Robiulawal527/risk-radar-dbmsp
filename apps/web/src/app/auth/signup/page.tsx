@@ -11,22 +11,58 @@ import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { mapAuthUser, type AuthTokenResponse } from '@/lib/auth-session';
+import { UserRole } from '@/lib/types';
+
+type AccountMode = 'USER' | 'ADMIN';
 
 export default function SignupPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [accountMode, setAccountMode] = useState<AccountMode>('USER');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { setSession } = useAuthStore();
 
+  const ensureAdminProfile = async (accessToken: string) => {
+    if (accountMode !== 'ADMIN') return;
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+    const { data } = await supabase.auth.getUser(accessToken);
+    const userId = data.user?.id;
+    const userEmail = data.user?.email ?? email.trim();
+    if (!userId) return;
+    await supabase
+      .from('profiles')
+      .upsert({
+        id: userId,
+        email: userEmail,
+        full_name: name.trim(),
+        role: UserRole.ADMIN,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .throwOnError();
+    await supabase
+      .from('admins')
+      .upsert({
+        id: userId,
+        email: userEmail,
+        name: name.trim(),
+        status: 'ACTIVE',
+        updated_at: new Date().toISOString(),
+      } as never)
+      .throwOnError();
+  };
+
   const finishSignup = async (accessToken: string) => {
+    await ensureAdminProfile(accessToken);
     const meRes = await api.get<{ success: boolean; data: Record<string, unknown> }>('/auth/me', {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    setSession(accessToken, mapAuthUser(meRes.data.data));
-    toast.success('Account created');
-    router.push('/dashboard/map');
+    const authUser = mapAuthUser(meRes.data.data);
+    setSession(accessToken, authUser);
+    toast.success(accountMode === 'ADMIN' ? 'Admin account created' : 'Account created');
+    router.push(accountMode === 'ADMIN' ? '/dashboard/admin' : '/dashboard/map');
   };
 
   const signupWithBackend = async () => {
@@ -34,6 +70,7 @@ export default function SignupPage() {
       name: name.trim(),
       email: email.trim(),
       password,
+      role: accountMode,
     });
     const token = res.data.data?.accessToken;
     if (!token) throw new Error('Signup succeeded but no access token was returned.');
@@ -61,6 +98,7 @@ export default function SignupPage() {
         options: {
           data: {
             name: name.trim(),
+            role: accountMode,
           },
         },
       });
@@ -74,7 +112,10 @@ export default function SignupPage() {
       const accessToken = data.session?.access_token;
       if (!accessToken) {
         toast.success('Account created', {
-          description: 'Please check your email to confirm your account, then sign in.',
+          description:
+            accountMode === 'ADMIN'
+              ? 'Please confirm your email, then sign in with the Admin option.'
+              : 'Please check your email to confirm your account, then sign in.',
         });
         router.push('/auth/login');
         return;
@@ -113,6 +154,28 @@ export default function SignupPage() {
         <div className="glass-panel">
           <form onSubmit={handleSignup} className="space-y-5">
             <div>
+              <label className="mb-2 block text-xs tracking-widest text-slate-400">
+                ACCOUNT TYPE
+              </label>
+              <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/5 p-1">
+                {(['USER', 'ADMIN'] as AccountMode[]).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setAccountMode(mode)}
+                    className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                      accountMode === mode
+                        ? 'bg-white text-slate-950'
+                        : 'text-slate-300 hover:bg-white/10'
+                    }`}
+                  >
+                    {mode === 'ADMIN' ? 'Admin' : 'User'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
               <label className="mb-2 block text-xs tracking-widest text-slate-400">FULL NAME</label>
               <Input
                 value={name}
@@ -147,7 +210,11 @@ export default function SignupPage() {
             </div>
 
             <Button type="submit" className="premium-button mt-4 h-12 w-full" disabled={loading}>
-              {loading ? 'CREATING ACCOUNT…' : 'CREATE FREE ACCOUNT'}
+              {loading
+                ? 'CREATING ACCOUNT…'
+                : accountMode === 'ADMIN'
+                  ? 'CREATE ADMIN ACCOUNT'
+                  : 'CREATE FREE ACCOUNT'}
             </Button>
           </form>
 
