@@ -33,7 +33,11 @@ Open http://localhost:3000
 
 1. In the Vercel project, set **Root Directory** to **`apps/web`** (required for this monorepo).
 2. Do **not** set a custom **Output Directory**; Next.js uses the framework default (`.next` is handled by Vercel).
-3. If previews show **403 Forbidden**, turn off **Deployment Protection** under Project → Settings → Deployment Protection (or log in with Vercel when prompted).
+3. Set `NEXT_PUBLIC_API_URL` to the Railway backend URL, including `/api`.
+4. Set the Supabase browser variables from `apps/web/.env.example`.
+5. If previews show **403 Forbidden**, turn off **Deployment Protection** under Project → Settings → Deployment Protection (or log in with Vercel when prompted).
+
+See `../../DEPLOYMENT.md` for the full Vercel + Railway + Supabase checklist.
 
 Demo login: demo@riskradar.local / any password
 

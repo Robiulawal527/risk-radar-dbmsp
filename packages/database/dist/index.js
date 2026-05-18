@@ -10,10 +10,26 @@ const pg_1 = __importDefault(require("pg"));
 function connectionString() {
     return process.env.DATABASE_URL || 'postgresql://user:pass@localhost:5432/riskradar';
 }
+function sslConfig(url) {
+    const explicit = process.env.DB_SSL?.trim().toLowerCase();
+    if (explicit === 'false' || explicit === '0' || explicit === 'disable')
+        return false;
+    if (explicit === 'true' || explicit === '1' || explicit === 'require') {
+        return { rejectUnauthorized: false };
+    }
+    if (/sslmode=(require|no-verify)/i.test(url))
+        return { rejectUnauthorized: false };
+    if (/(supabase\.co|supabase\.in|pooler\.supabase\.com)/i.test(url)) {
+        return { rejectUnauthorized: false };
+    }
+    return false;
+}
 function createPool() {
     const onVercel = Boolean(process.env.VERCEL);
+    const url = connectionString();
     return new pg_1.default.Pool({
-        connectionString: connectionString(),
+        connectionString: url,
+        ssl: sslConfig(url),
         // Serverless: reuse one warm pool per isolate; keep concurrency low.
         max: onVercel ? 3 : 20,
         idleTimeoutMillis: onVercel ? 10000 : 30000,

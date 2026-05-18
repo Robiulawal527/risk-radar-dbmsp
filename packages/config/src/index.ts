@@ -7,13 +7,17 @@ function isCloudRuntime(): boolean {
   if (process.env.VERCEL) return true;
   if (process.env.FLY_APP_NAME) return true;
   if (process.env.RENDER) return true;
-  if (process.env.RAILWAY_ENVIRONMENT === 'production') return true;
+  if (process.env.RAILWAY_ENVIRONMENT) return true;
+  if (process.env.RAILWAY_ENVIRONMENT_NAME) return true;
+  if (process.env.RAILWAY_PROJECT_ID) return true;
   return false;
 }
 
 if (isCloudRuntime()) {
   const missing: string[] = [];
   if (!process.env.JWT_SECRET?.trim()) missing.push('JWT_SECRET');
+  if (!process.env.SUPABASE_URL?.trim()) missing.push('SUPABASE_URL');
+  if (!process.env.SUPABASE_ANON_KEY?.trim()) missing.push('SUPABASE_ANON_KEY');
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) missing.push('SUPABASE_SERVICE_ROLE_KEY');
   const db = process.env.DATABASE_URL?.trim() ?? '';
   if (!db || /localhost|127\.0\.0\.1/i.test(db)) {

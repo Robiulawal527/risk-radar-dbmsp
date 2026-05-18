@@ -253,67 +253,74 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f4ee] px-4 py-6 text-[#27251f] sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[#070b14] px-4 py-6 text-white sm:px-6 lg:px-8">
       <div className="mx-auto grid min-h-[calc(100vh-3rem)] w-full max-w-6xl items-center gap-10 lg:grid-cols-[0.9fr_1.1fr]">
         <section className="hidden lg:block">
           <div className="max-w-md">
-            <div className="mb-8 flex h-12 w-12 items-center justify-center border border-[#d8d1c4] bg-[#fbfaf7]">
-              <Shield className="h-6 w-6 text-[#7d2f25]" />
+            <div className="mb-8 flex h-12 w-12 items-center justify-center rounded-2xl border border-teal-300/20 bg-teal-400/10 shadow-[0_0_40px_rgba(45,212,191,0.12)]">
+              <Shield className="h-6 w-6 text-teal-200" />
             </div>
-            <p className="text-xs font-medium uppercase tracking-[0.34em] text-[#7d2f25]">
+            <p className="text-xs font-medium uppercase tracking-[0.34em] text-teal-200">
               Risk Radar
             </p>
-            <h1 className="mt-5 text-5xl font-semibold leading-tight text-[#27251f]">
-              Quiet tools for safer streets.
-            </h1>
-            <p className="mt-6 text-base leading-8 text-[#6d675c]">
-              The citizen account is the main path: reports, SOS, live map, and nearby awareness.
-              Admin access stays separate and opens only after review.
-            </p>
-            <div className="mt-10 grid gap-3 border-l border-[#d8d1c4] pl-5 text-sm leading-6 text-[#6d675c]">
-              <span>11-digit phone format keeps SOS contact data clean.</span>
-              <span>Admin applications require NID, bachelor education, and a photo.</span>
-            </div>
+            <h1 className="mt-5 text-5xl font-semibold leading-tight text-white">Create your safety account.</h1>
+            <p className="mt-6 text-base leading-8 text-slate-300">Citizen first. Admin access by verified application.</p>
           </div>
         </section>
 
         <div className="mx-auto w-full max-w-[520px]">
           <div className="mb-8">
-            <p className="text-xs font-medium uppercase tracking-[0.28em] text-[#7d2f25]">
+            <p className="text-xs font-medium uppercase tracking-[0.28em] text-teal-200">
               {accountMode === 'ADMIN' ? 'Admin application' : 'Citizen account'}
             </p>
-            <h2 className="mt-3 text-4xl font-semibold text-[#27251f]">Create account</h2>
-            <p className="mt-3 text-sm leading-6 text-[#716b61]">
+            <h2 className="mt-3 text-4xl font-semibold text-white">Create account</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-400">
               {accountMode === 'ADMIN'
-                ? 'Submit your verification details. Approval is manual before access is active.'
-                : 'Start as a citizen user. You can apply for admin access separately.'}
+                ? 'Verification details are required before approval.'
+                : 'Report, receive alerts, and use the live map.'}
             </p>
           </div>
 
-          <div className="border border-[#ded6c8] bg-[#fbfaf7] p-5 shadow-[0_24px_80px_rgba(39,37,31,0.08)] sm:p-8">
+          {accountMode !== 'ADMIN' ? (
+            <button
+              type="button"
+              onClick={() => setAccountMode('ADMIN')}
+              className="mb-5 flex w-full items-center justify-between gap-4 rounded-3xl border border-teal-300/20 bg-teal-400/10 p-4 text-left text-sm text-slate-200 shadow-[0_0_40px_rgba(45,212,191,0.08)] transition hover:border-teal-200/40 hover:bg-teal-400/15"
+            >
+              <span>
+                <span className="block font-semibold text-white">Need admin access?</span>
+                <span className="mt-1 block text-xs text-slate-400">
+                  Apply with NID, bachelor education, and photo.
+                </span>
+              </span>
+              <ArrowRight className="h-4 w-4 shrink-0 text-teal-200" />
+            </button>
+          ) : null}
+
+          <div className="rounded-[28px] border border-white/10 bg-slate-950/80 p-5 shadow-2xl shadow-black/35 backdrop-blur-xl transition sm:p-8">
             <form onSubmit={handleSignup} className="space-y-6">
               <div>
-                <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[#7d766b]">
+                <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
                   Name
                 </label>
                 <div className="relative">
-                  <UserRound className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-[#8b8377]" />
+                  <UserRound className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-500" />
                   <Input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     required
                     autoComplete="name"
                     placeholder="Your real name"
-                    className="h-12 rounded-none border border-[#d8d1c4] bg-[#fffdf9] pl-10 text-[#27251f] placeholder:text-[#aaa196] focus-visible:border-[#27251f] focus-visible:ring-0"
+                    className="h-12 rounded-2xl border-white/10 bg-white/[0.04] pl-10 text-white placeholder:text-slate-600 transition focus-visible:border-teal-300/50 focus-visible:ring-2 focus-visible:ring-teal-400/20"
                   />
                 </div>
               </div>
               <div>
-                <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[#7d766b]">
+                <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
                   Email
                 </label>
                 <div className="relative">
-                  <Mail className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-[#8b8377]" />
+                  <Mail className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-500" />
                   <Input
                     type="email"
                     value={email}
@@ -321,16 +328,16 @@ export default function SignupPage() {
                     required
                     autoComplete="email"
                     placeholder="you@example.com"
-                    className="h-12 rounded-none border border-[#d8d1c4] bg-[#fffdf9] pl-10 text-[#27251f] placeholder:text-[#aaa196] focus-visible:border-[#27251f] focus-visible:ring-0"
+                    className="h-12 rounded-2xl border-white/10 bg-white/[0.04] pl-10 text-white placeholder:text-slate-600 transition focus-visible:border-teal-300/50 focus-visible:ring-2 focus-visible:ring-teal-400/20"
                   />
                 </div>
               </div>
               <div>
-                <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[#7d766b]">
+                <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
                   Phone
                 </label>
                 <div className="relative">
-                  <Phone className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-[#8b8377]" />
+                  <Phone className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-500" />
                   <Input
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
@@ -338,93 +345,90 @@ export default function SignupPage() {
                     autoComplete="tel"
                     placeholder="01712345678"
                     maxLength={14}
-                    className="h-12 rounded-none border border-[#d8d1c4] bg-[#fffdf9] pl-10 text-[#27251f] placeholder:text-[#aaa196] focus-visible:border-[#27251f] focus-visible:ring-0"
+                    className="h-12 rounded-2xl border-white/10 bg-white/[0.04] pl-10 text-white placeholder:text-slate-600 transition focus-visible:border-teal-300/50 focus-visible:ring-2 focus-visible:ring-teal-400/20"
                   />
                 </div>
               </div>
               {accountMode === 'ADMIN' ? (
-                <div className="border border-[#d8d1c4] bg-[#f2eee6] p-4">
+                <div className="rounded-3xl border border-teal-300/25 bg-teal-400/10 p-4 shadow-[0_0_36px_rgba(45,212,191,0.08)]">
                   <div className="mb-4 flex items-start gap-3">
-                    <div className="border border-[#d0c5b6] bg-[#fbfaf7] p-2 text-[#7d2f25]">
+                    <div className="rounded-2xl border border-teal-300/20 bg-slate-950/70 p-2 text-teal-200">
                       <Wrench className="h-5 w-5" />
                     </div>
                     <div>
-                      <div className="font-medium text-[#27251f]">Admin verification</div>
-                      <p className="mt-1 text-xs leading-5 text-[#716b61]">
-                        Admin accounts are submitted for review first. Access is activated only
-                        after you or a super admin approves the application.
+                      <div className="font-semibold text-white">Admin verification</div>
+                      <p className="mt-1 text-xs leading-5 text-slate-300">
+                        Pending until a super admin approves it.
                       </p>
                     </div>
                   </div>
 
                   <div className="grid gap-4">
                     <div>
-                      <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[#7d766b]">
+                      <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
                         NID number
                       </label>
                       <div className="relative">
-                        <FileBadge2 className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-[#8b8377]" />
+                        <FileBadge2 className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-500" />
                         <Input
                           value={nidNumber}
                           onChange={(e) => setNidNumber(e.target.value)}
                           inputMode="numeric"
                           placeholder="10, 13, or 17 digits"
                           maxLength={17}
-                          className="h-12 rounded-none border border-[#d8d1c4] bg-[#fffdf9] pl-10 text-[#27251f] placeholder:text-[#aaa196] focus-visible:border-[#27251f] focus-visible:ring-0"
+                          className="h-12 rounded-2xl border-white/10 bg-slate-950/50 pl-10 text-white placeholder:text-slate-600 transition focus-visible:border-teal-300/50 focus-visible:ring-2 focus-visible:ring-teal-400/20"
                         />
                       </div>
                     </div>
 
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
-                        <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[#7d766b]">
+                        <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
                           Education
                         </label>
                         <div className="relative">
-                          <GraduationCap className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-[#8b8377]" />
+                          <GraduationCap className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-500" />
                           <Input
                             value={ADMIN_EDUCATION}
                             disabled
-                            className="h-12 rounded-none border border-[#d8d1c4] bg-[#ebe5dc] pl-10 text-[#27251f]"
+                            className="h-12 rounded-2xl border-white/10 bg-slate-950/50 pl-10 text-slate-300"
                           />
                         </div>
                       </div>
                       <div>
-                        <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[#7d766b]">
+                        <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
                           Field
                         </label>
                         <Input
                           value={educationField}
                           onChange={(e) => setEducationField(e.target.value)}
                           placeholder="e.g. CSE, BBA, English"
-                          className="h-12 rounded-none border border-[#d8d1c4] bg-[#fffdf9] text-[#27251f] placeholder:text-[#aaa196] focus-visible:border-[#27251f] focus-visible:ring-0"
+                          className="h-12 rounded-2xl border-white/10 bg-slate-950/50 text-white placeholder:text-slate-600 transition focus-visible:border-teal-300/50 focus-visible:ring-2 focus-visible:ring-teal-400/20"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[#7d766b]">
+                      <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
                         Admin photo
                       </label>
-                      <label className="flex cursor-pointer flex-col items-center justify-center gap-3 border border-dashed border-[#cfc5b8] bg-[#fffdf9] p-4 text-center transition hover:bg-white">
+                      <label className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-teal-300/25 bg-slate-950/40 p-4 text-center transition hover:border-teal-200/50 hover:bg-slate-950/60">
                         {photoPreview ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={photoPreview}
                             alt="Admin applicant preview"
-                            className="h-28 w-28 object-cover ring-1 ring-[#d8d1c4]"
+                            className="h-28 w-28 rounded-2xl object-cover ring-1 ring-teal-300/20"
                           />
                         ) : (
-                          <span className="flex h-16 w-16 items-center justify-center border border-[#d8d1c4] bg-[#f7f4ee] text-[#7d766b]">
+                          <span className="flex h-16 w-16 items-center justify-center rounded-2xl border border-teal-300/20 bg-teal-400/10 text-teal-200">
                             <Camera className="h-7 w-7" />
                           </span>
                         )}
-                        <span className="text-sm font-medium text-[#27251f]">
+                        <span className="text-sm font-medium text-white">
                           Upload a clear face photo
                         </span>
-                        <span className="text-xs text-[#716b61]">
-                          JPG or PNG, up to 2 MB. This is reviewed before admin activation.
-                        </span>
+                        <span className="text-xs text-slate-400">JPG or PNG, up to 2 MB.</span>
                         <input
                           type="file"
                           accept="image/*"
@@ -446,11 +450,11 @@ export default function SignupPage() {
                 </div>
               ) : null}
               <div>
-                <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[#7d766b]">
+                <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
                   Password
                 </label>
                 <div className="relative">
-                  <LockKeyhole className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-[#8b8377]" />
+                  <LockKeyhole className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-500" />
                   <Input
                     type="password"
                     value={password}
@@ -459,14 +463,14 @@ export default function SignupPage() {
                     minLength={8}
                     placeholder="At least 8 characters"
                     autoComplete="new-password"
-                    className="h-12 rounded-none border border-[#d8d1c4] bg-[#fffdf9] pl-10 text-[#27251f] placeholder:text-[#aaa196] focus-visible:border-[#27251f] focus-visible:ring-0"
+                    className="h-12 rounded-2xl border-white/10 bg-white/[0.04] pl-10 text-white placeholder:text-slate-600 transition focus-visible:border-teal-300/50 focus-visible:ring-2 focus-visible:ring-teal-400/20"
                   />
                 </div>
               </div>
 
               <Button
                 type="submit"
-                className="mt-2 h-12 w-full rounded-none bg-[#27251f] text-sm font-medium text-[#fbfaf7] shadow-none hover:bg-[#3a372f]"
+                className="mt-2 h-12 w-full rounded-2xl bg-gradient-to-r from-indigo-600 via-teal-500 to-cyan-400 text-sm font-semibold text-white shadow-lg shadow-teal-500/20 transition hover:brightness-110 active:scale-[0.99]"
                 disabled={loading}
               >
                 <span>
@@ -480,14 +484,14 @@ export default function SignupPage() {
               </Button>
             </form>
 
-            <div className="mt-7 flex flex-col gap-3 text-sm text-[#716b61] sm:flex-row sm:items-center sm:justify-between">
-              <Link href="/auth/login" className="font-medium text-[#27251f] hover:text-[#7d2f25]">
+            <div className="mt-7 flex flex-col gap-3 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+              <Link href="/auth/login" className="font-medium text-white transition hover:text-teal-200">
                 Sign in
               </Link>
               <button
                 type="button"
                 onClick={() => setAccountMode(accountMode === 'ADMIN' ? 'USER' : 'ADMIN')}
-                className="text-left font-medium text-[#7d2f25] hover:text-[#27251f] sm:text-right"
+                className="text-left font-medium text-teal-300 transition hover:text-white sm:text-right"
               >
                 {accountMode === 'ADMIN' ? 'Create citizen account' : 'Apply for admin access'}
               </button>
