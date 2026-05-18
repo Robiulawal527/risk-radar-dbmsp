@@ -61,7 +61,10 @@ export default function ReportPage() {
   const areaOk = area.trim().length >= AREA_MIN;
 
   const coordOk =
-    latitude !== null && longitude !== null && Number.isFinite(latitude) && Number.isFinite(longitude);
+    latitude !== null &&
+    longitude !== null &&
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude);
   const showErrors = touched;
   const titleInvalid = showErrors && !titleOk;
   const descInvalid = showErrors && !descOk;
@@ -161,7 +164,7 @@ export default function ReportPage() {
     }
     if (!descOk) {
       toast.error('Add more detail', {
-        description: `Aim for at least ${DESC_MIN} characters: time, what happened, and anything notable.`,
+        description: `Aim for at least ${DESC_MIN} characters. Voice typing is often easier for a detailed description.`,
       });
       return;
     }
@@ -202,7 +205,8 @@ export default function ReportPage() {
         queryClient.invalidateQueries({ queryKey: ['map-crimes'] }),
       ]);
       toast.success('Report submitted', {
-        description: 'It is stored in the database. Nearby users with alerts enabled may be notified.',
+        description:
+          'It is stored in the database. Nearby users with alerts enabled may be notified.',
       });
       setTitle('');
       setDescription('');
@@ -229,11 +233,7 @@ export default function ReportPage() {
 
   return (
     <div className="mx-auto max-w-3xl pb-12">
-      <motion.header
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-8"
-      >
+      <motion.header initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
         <Badge variant="outline" className="mb-4 border-teal-500/40 text-teal-200">
           Community safety
         </Badge>
@@ -264,7 +264,10 @@ export default function ReportPage() {
 
           <form onSubmit={handleSubmit} className="space-y-8" noValidate>
             <div className="space-y-2">
-              <label htmlFor="report-title" className="text-xs font-semibold tracking-wide text-slate-400">
+              <label
+                htmlFor="report-title"
+                className="text-xs font-semibold tracking-wide text-slate-400"
+              >
                 Short summary
               </label>
               <Input
@@ -278,13 +281,17 @@ export default function ReportPage() {
                 className={cn(titleInvalid && 'border-red-400/50 ring-1 ring-red-400/30')}
               />
               <p id="report-title-hint" className="text-xs text-slate-500">
-                Minimum {TITLE_MIN} characters. What happened, in one line.
+                Minimum {TITLE_MIN} characters. This box is for a short one-line summary shown on
+                maps and lists.
               </p>
             </div>
 
             <div className="space-y-2">
               <div className="flex items-baseline justify-between gap-2">
-                <label htmlFor="report-description" className="text-xs font-semibold tracking-wide text-slate-400">
+                <label
+                  htmlFor="report-description"
+                  className="text-xs font-semibold tracking-wide text-slate-400"
+                >
                   What happened?
                 </label>
                 <span className="text-xs text-slate-500">{description.length} characters</span>
@@ -302,8 +309,9 @@ export default function ReportPage() {
                 aria-describedby="report-description-hint"
               />
               <p id="report-description-hint" className="text-xs text-slate-500">
-                At least {DESC_MIN} characters helps responders and the community act on credible
-                information.
+                This box is for the detailed story: time, what happened, direction, vehicle or
+                clothing details, and injuries. Use voice typing for a longer description; it is
+                usually easier and faster.
               </p>
             </div>
 
@@ -343,7 +351,9 @@ export default function ReportPage() {
                     className={cn(
                       'risk-badge border text-xs font-semibold capitalize transition-opacity',
                       severityStyle[s],
-                      severity === s ? 'opacity-100 ring-2 ring-white/20' : 'opacity-70 hover:opacity-100'
+                      severity === s
+                        ? 'opacity-100 ring-2 ring-white/20'
+                        : 'opacity-70 hover:opacity-100'
                     )}
                   >
                     {s.toLowerCase()}
@@ -355,7 +365,10 @@ export default function ReportPage() {
             <div className="space-y-2">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                 <div className="min-w-0 flex-1 space-y-2">
-                  <label htmlFor="report-address" className="text-xs font-semibold tracking-wide text-slate-400">
+                  <label
+                    htmlFor="report-address"
+                    className="text-xs font-semibold tracking-wide text-slate-400"
+                  >
                     Address or nearby landmark
                   </label>
                   <Input
@@ -366,6 +379,10 @@ export default function ReportPage() {
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
                   />
+                  <p className="text-xs text-slate-500">
+                    Type the closest road, building, shop, or landmark so the map search can place
+                    the incident.
+                  </p>
                 </div>
                 <Button
                   type="button"
@@ -399,7 +416,10 @@ export default function ReportPage() {
 
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="space-y-2">
-                  <label htmlFor="report-area" className="text-xs font-semibold tracking-wide text-slate-400">
+                  <label
+                    htmlFor="report-area"
+                    className="text-xs font-semibold tracking-wide text-slate-400"
+                  >
                     Area
                   </label>
                   <Input
@@ -411,9 +431,15 @@ export default function ReportPage() {
                     onChange={(e) => setArea(e.target.value)}
                     className={cn(areaInvalid && 'border-red-400/50 ring-1 ring-red-400/30')}
                   />
+                  <p className="text-xs text-slate-500">
+                    Neighborhood or area name shown in reports.
+                  </p>
                 </div>
                 <div className="space-y-2">
-                  <label htmlFor="report-district" className="text-xs font-semibold tracking-wide text-slate-400">
+                  <label
+                    htmlFor="report-district"
+                    className="text-xs font-semibold tracking-wide text-slate-400"
+                  >
                     District
                   </label>
                   <Input
@@ -424,9 +450,15 @@ export default function ReportPage() {
                     value={district}
                     onChange={(e) => setDistrict(e.target.value)}
                   />
+                  <p className="text-xs text-slate-500">
+                    District helps filter and verify reports.
+                  </p>
                 </div>
                 <div className="space-y-2">
-                  <label htmlFor="report-division" className="text-xs font-semibold tracking-wide text-slate-400">
+                  <label
+                    htmlFor="report-division"
+                    className="text-xs font-semibold tracking-wide text-slate-400"
+                  >
                     Division
                   </label>
                   <Input
@@ -437,6 +469,7 @@ export default function ReportPage() {
                     value={division}
                     onChange={(e) => setDivision(e.target.value)}
                   />
+                  <p className="text-xs text-slate-500">Division helps group reports regionally.</p>
                 </div>
               </div>
 
@@ -446,7 +479,10 @@ export default function ReportPage() {
                 </summary>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <label htmlFor="report-latitude" className="text-xs font-semibold tracking-wide text-slate-400">
+                    <label
+                      htmlFor="report-latitude"
+                      className="text-xs font-semibold tracking-wide text-slate-400"
+                    >
                       Latitude
                     </label>
                     <Input
@@ -462,7 +498,10 @@ export default function ReportPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label htmlFor="report-longitude" className="text-xs font-semibold tracking-wide text-slate-400">
+                    <label
+                      htmlFor="report-longitude"
+                      className="text-xs font-semibold tracking-wide text-slate-400"
+                    >
                       Longitude
                     </label>
                     <Input
@@ -481,8 +520,8 @@ export default function ReportPage() {
               </details>
 
               <p className="text-xs text-slate-500">
-                Use GPS for the fastest entry, or type a location and find it on the map. All saved location fields can
-                be corrected before submitting.
+                Use GPS for the fastest entry, or type a location and find it on the map. All saved
+                location fields can be corrected before submitting.
               </p>
               {coordOk ? (
                 <p className="text-xs text-emerald-400/90">
@@ -501,7 +540,10 @@ export default function ReportPage() {
               </div>
               <p className="text-sm text-slate-400">
                 In a life-threatening emergency, use{' '}
-                <Link href="/dashboard/sos" className="font-medium text-rose-400 underline-offset-4 hover:underline">
+                <Link
+                  href="/dashboard/sos"
+                  className="font-medium text-rose-400 underline-offset-4 hover:underline"
+                >
                   Emergency SOS
                 </Link>{' '}
                 instead of this form.

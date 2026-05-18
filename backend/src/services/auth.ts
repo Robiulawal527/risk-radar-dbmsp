@@ -12,6 +12,7 @@ import {
   type User,
 } from '@risk-radar/types';
 import { HttpError } from '../lib/http-error.js';
+import { normalizeEmail, normalizePhoneNumber, normalizeRequiredText } from '../lib/validation.js';
 
 const supabase = createClient(
   config.supabase.url,
@@ -40,12 +41,15 @@ function toUser(row: UserRow): User {
 }
 
 export async function signup(signupData: SignupData): Promise<AuthToken> {
+  const email = normalizeEmail(signupData.email);
+  const name = normalizeRequiredText(signupData.name, 'Full name', 2, 120);
+  const phone = normalizePhoneNumber(signupData.phone);
   if (!signupData.password || signupData.password.length < 8) {
     throw new HttpError(400, 'Password must be at least 8 characters');
   }
 
-  const existingUser = await queryOne<UserRow>('SELECT * FROM "User" WHERE email = $1', [
-    signupData.email,
+  const existingUser = await queryOne<UserRow>('SELECT * FROM "User" WHERE lower(email) = $1', [
+    email,
   ]);
 
   if (existingUser) {
@@ -62,7 +66,7 @@ export async function signup(signupData: SignupData): Promise<AuthToken> {
     `INSERT INTO "User" (email, password, name, phone, role, "createdAt", "updatedAt")
      VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
      RETURNING *`,
-    [signupData.email, hashedPassword, signupData.name, signupData.phone ?? null, requestedRole]
+    [email, hashedPassword, name, phone, requestedRole]
   );
 
   if (!row) throw new HttpError(500, 'Failed to create user');
@@ -81,9 +85,8 @@ export async function signup(signupData: SignupData): Promise<AuthToken> {
 }
 
 export async function login(credentials: LoginCredentials): Promise<AuthToken> {
-  const user = await queryOne<UserRow>('SELECT * FROM "User" WHERE email = $1', [
-    credentials.email,
-  ]);
+  const email = normalizeEmail(credentials.email);
+  const user = await queryOne<UserRow>('SELECT * FROM "User" WHERE lower(email) = $1', [email]);
 
   if (!user) {
     throw new HttpError(401, 'Invalid credentials');

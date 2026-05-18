@@ -38,6 +38,7 @@ import {
   Trash2,
   Users,
 } from 'lucide-react';
+import { PHONE_HINT, requireValidPhoneNumber } from '@/lib/validation';
 
 const crimeTypes = Object.values(CrimeType);
 const severities = Object.values(Severity);
@@ -203,7 +204,10 @@ export default function AdminPage() {
   });
 
   const saveVolunteerM = useMutation({
-    mutationFn: saveVolunteer,
+    mutationFn: (input: VolunteerInput) => {
+      const phone = requireValidPhoneNumber(input.phone ?? '');
+      return saveVolunteer({ ...input, phone });
+    },
     onSuccess: async () => {
       toast.success(volunteerEditId ? 'Volunteer updated' : 'Volunteer added');
       setVolunteerEditId(undefined);
@@ -595,6 +599,8 @@ function Select({
       className="h-12 rounded-2xl border border-white/15 bg-slate-950 px-4 text-sm text-white outline-none focus:ring-2 focus:ring-teal-400/40"
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      aria-label={`Select option for ${value}`}
+      title={`Select option (current: ${value})`}
     >
       {options.map((option) => (
         <option key={option} value={option}>
@@ -706,7 +712,9 @@ function VolunteerForm({ form, setForm, onSubmit, onCancel, saving, editing }: a
         <Input
           value={form.phone}
           onChange={(e) => setForm({ ...form, phone: e.target.value })}
-          placeholder="Phone"
+          inputMode="numeric"
+          maxLength={14}
+          placeholder="01712345678"
         />
         <Input
           type="number"
@@ -727,6 +735,9 @@ function VolunteerForm({ form, setForm, onSubmit, onCancel, saving, editing }: a
         onChange={(e) => setForm({ ...form, skills: splitCsv(e.target.value) })}
         placeholder="Skills, comma separated"
       />
+      <p className="text-xs text-slate-500">
+        Phone is optional, but when present it must be 11 digits. {PHONE_HINT}
+      </p>
       <FormActions saving={saving} editing={editing} onCancel={onCancel} />
     </form>
   );

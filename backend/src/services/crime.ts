@@ -1,6 +1,11 @@
 import { query, queryOne } from '@risk-radar/database';
 import type { Crime, CrimeType, PaginatedResponse, Severity } from '@risk-radar/types';
 import { HttpError } from '../lib/http-error.js';
+import {
+  normalizeFiniteNumber,
+  normalizeOptionalText,
+  normalizeRequiredText,
+} from '../lib/validation.js';
 import { notifyUsersNearNewCrime } from './nearby-alerts.js';
 
 type CrimeRow = {
@@ -114,8 +119,8 @@ export async function findAll(params: {
   area?: string;
   district?: string;
 }): Promise<PaginatedResponse<Crime>> {
-  const page = params.page || 1;
-  const limit = params.limit || 20;
+  const page = Math.max(1, Math.floor(Number(params.page) || 1));
+  const limit = Math.min(100, Math.max(1, Math.floor(Number(params.limit) || 20)));
   const skip = (page - 1) * limit;
 
   const { sql: whereSql, values: whereVals } = buildListWhere({
@@ -164,6 +169,24 @@ export async function findById(id: string): Promise<Crime> {
 }
 
 export async function create(data: Partial<Crime>, userId: string): Promise<Crime> {
+  const location = data.location;
+  if (!location) throw new HttpError(400, 'Location is required');
+  const latitude = normalizeFiniteNumber(location.latitude, 'Latitude');
+  const longitude = normalizeFiniteNumber(location.longitude, 'Longitude');
+  if (latitude < -90 || latitude > 90)
+    throw new HttpError(400, 'Latitude must be between -90 and 90');
+  if (longitude < -180 || longitude > 180) {
+    throw new HttpError(400, 'Longitude must be between -180 and 180');
+  }
+  const title = normalizeRequiredText(data.title, 'Title', 4, 160);
+  const description = normalizeRequiredText(data.description, 'Description', 20, 3000);
+  const area = normalizeRequiredText(location.area, 'Area', 3, 120);
+  const reportedBy = normalizeRequiredText(data.reportedBy, 'Reported by', 2, 160);
+  const type = data.type;
+  const severity = data.severity;
+  if (!type) throw new HttpError(400, 'Crime type is required');
+  if (!severity) throw new HttpError(400, 'Severity is required');
+
   const crime = await queryOne<CrimeRow>(
     `INSERT INTO "Crime" (
       type, category, title, description, latitude, longitude, address, area, district, division,
@@ -174,17 +197,17 @@ export async function create(data: Partial<Crime>, userId: string): Promise<Crim
     ) RETURNING *`,
     [
       data.type!,
-      data.category || data.type!,
-      data.title!,
-      data.description!,
-      data.location!.latitude,
-      data.location!.longitude,
-      data.location!.address ?? null,
-      data.location!.area ?? null,
-      data.location!.district ?? null,
-      data.location!.division ?? null,
-      data.severity!,
-      data.reportedBy!,
+      data.category || type,
+      title,
+      description,
+      latitude,
+      longitude,
+      normalizeOptionalText(location.address, 240),
+      area,
+      normalizeOptionalText(location.district, 120),
+      normalizeOptionalText(location.division, 120),
+      severity,
+      reportedBy,
       userId,
       JSON.stringify(data.victimInfo || {}),
       JSON.stringify(data.criminalInfo || []),

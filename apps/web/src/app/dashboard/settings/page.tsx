@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { MapPin, Loader2 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
+import { PHONE_HINT, requireValidPhoneNumber } from '@/lib/validation';
 
 function getErrorMessage(err: unknown, fallback: string): string {
   if (err && typeof err === 'object' && 'response' in err) {
@@ -49,12 +50,21 @@ export default function SettingsPage() {
     if (!user) return;
     setSaving(true);
     const skillsArr = parseSkills(skills);
+    let normalizedPhone = '';
+    try {
+      normalizedPhone = requireValidPhoneNumber(phone);
+      if (phone.trim() && normalizedPhone !== phone) setPhone(normalizedPhone);
+    } catch (err) {
+      setSaving(false);
+      toast.error(err instanceof Error ? err.message : PHONE_HINT);
+      return;
+    }
     try {
       const res = await api.put<{ success: boolean; data: Record<string, unknown> }>(
         '/users/profile',
         {
           name: name.trim(),
-          phone: phone.trim(),
+          phone: normalizedPhone,
           skills: skillsArr,
           alertsEnabled,
         }
@@ -76,7 +86,7 @@ export default function SettingsPage() {
         const { error } = await supabase.auth.updateUser({
           data: {
             name: name.trim(),
-            phone: phone.trim(),
+            phone: normalizedPhone,
             skills: skillsArr,
             alertsEnabled,
           },
@@ -85,7 +95,7 @@ export default function SettingsPage() {
         if (!error) {
           patchUser({
             name: name.trim(),
-            phone: phone.trim(),
+            phone: normalizedPhone,
             skills: skillsArr,
             alertsEnabled,
           });
@@ -190,8 +200,13 @@ export default function SettingsPage() {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               className="mt-1.5"
-              placeholder="e.g. +1234567890"
+              inputMode="numeric"
+              maxLength={14}
+              placeholder="01712345678"
             />
+            <span className="text-xs text-slate-500">
+              Optional. {PHONE_HINT} This is used for SOS/contact workflows.
+            </span>
           </div>
           <div>
             <label className="text-xs text-slate-400">SKILLS</label>

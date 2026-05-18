@@ -9,6 +9,7 @@ exports.findByArea = findByArea;
 exports.findByCoordinates = findByCoordinates;
 const database_1 = require("@risk-radar/database");
 const http_error_js_1 = require("../lib/http-error.js");
+const validation_js_1 = require("../lib/validation.js");
 const nearby_alerts_js_1 = require("./nearby-alerts.js");
 function buildListWhere(params) {
     const parts = ['c.latitude IS NOT NULL', 'c.longitude IS NOT NULL'];
@@ -72,8 +73,8 @@ async function loadEvidenceForCrimes(crimeIds) {
     return map;
 }
 async function findAll(params) {
-    const page = params.page || 1;
-    const limit = params.limit || 20;
+    const page = Math.max(1, Math.floor(Number(params.page) || 1));
+    const limit = Math.min(100, Math.max(1, Math.floor(Number(params.limit) || 20)));
     const skip = (page - 1) * limit;
     const { sql: whereSql, values: whereVals } = buildListWhere({
         type: params.type,
@@ -106,6 +107,26 @@ async function findById(id) {
     return formatCrime(crime, evMap.get(id) || []);
 }
 async function create(data, userId) {
+    const location = data.location;
+    if (!location)
+        throw new http_error_js_1.HttpError(400, 'Location is required');
+    const latitude = (0, validation_js_1.normalizeFiniteNumber)(location.latitude, 'Latitude');
+    const longitude = (0, validation_js_1.normalizeFiniteNumber)(location.longitude, 'Longitude');
+    if (latitude < -90 || latitude > 90)
+        throw new http_error_js_1.HttpError(400, 'Latitude must be between -90 and 90');
+    if (longitude < -180 || longitude > 180) {
+        throw new http_error_js_1.HttpError(400, 'Longitude must be between -180 and 180');
+    }
+    const title = (0, validation_js_1.normalizeRequiredText)(data.title, 'Title', 4, 160);
+    const description = (0, validation_js_1.normalizeRequiredText)(data.description, 'Description', 20, 3000);
+    const area = (0, validation_js_1.normalizeRequiredText)(location.area, 'Area', 3, 120);
+    const reportedBy = (0, validation_js_1.normalizeRequiredText)(data.reportedBy, 'Reported by', 2, 160);
+    const type = data.type;
+    const severity = data.severity;
+    if (!type)
+        throw new http_error_js_1.HttpError(400, 'Crime type is required');
+    if (!severity)
+        throw new http_error_js_1.HttpError(400, 'Severity is required');
     const crime = await (0, database_1.queryOne)(`INSERT INTO "Crime" (
       type, category, title, description, latitude, longitude, address, area, district, division,
       severity, "reportedBy", "userId", "victimInfo", "criminalInfo", witnesses, "dateTime", "createdAt", "updatedAt"
@@ -114,17 +135,17 @@ async function create(data, userId) {
       $11, $12, $13, $14::jsonb, $15::jsonb, $16::jsonb, $17, NOW(), NOW()
     ) RETURNING *`, [
         data.type,
-        data.category || data.type,
-        data.title,
-        data.description,
-        data.location.latitude,
-        data.location.longitude,
-        data.location.address ?? null,
-        data.location.area ?? null,
-        data.location.district ?? null,
-        data.location.division ?? null,
-        data.severity,
-        data.reportedBy,
+        data.category || type,
+        title,
+        description,
+        latitude,
+        longitude,
+        (0, validation_js_1.normalizeOptionalText)(location.address, 240),
+        area,
+        (0, validation_js_1.normalizeOptionalText)(location.district, 120),
+        (0, validation_js_1.normalizeOptionalText)(location.division, 120),
+        severity,
+        reportedBy,
         userId,
         JSON.stringify(data.victimInfo || {}),
         JSON.stringify(data.criminalInfo || []),

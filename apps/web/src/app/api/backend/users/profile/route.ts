@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { getUpstreamApiOrigin } from '@/lib/backend-upstream';
 import { forwardHeaders, HOP_BY_HOP } from '@/lib/backend-proxy-headers';
 import { upstreamTargetsThisNextServer } from '@/lib/upstream-same-origin';
+import { requireValidPhoneNumber } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -191,7 +192,16 @@ async function putFallbackProfile(req: NextRequest) {
   };
 
   if (typeof body.name === 'string') update.full_name = body.name.trim();
-  if (typeof body.phone === 'string') update.phone = body.phone.trim();
+  if (typeof body.phone === 'string') {
+    try {
+      update.phone = requireValidPhoneNumber(body.phone) || null;
+    } catch (err) {
+      return NextResponse.json(
+        { success: false, error: err instanceof Error ? err.message : 'Invalid phone number' },
+        { status: 400 }
+      );
+    }
+  }
   if (typeof body.avatar === 'string') update.avatar = body.avatar.trim();
   if (typeof body.alertLatitude === 'number') update.alert_latitude = body.alertLatitude;
   if (body.alertLatitude === null) update.alert_latitude = null;

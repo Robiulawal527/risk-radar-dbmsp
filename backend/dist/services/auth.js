@@ -48,17 +48,21 @@ const database_1 = require("@risk-radar/database");
 const config_1 = require("@risk-radar/config");
 const types_1 = require("@risk-radar/types");
 const http_error_js_1 = require("../lib/http-error.js");
+const validation_js_1 = require("../lib/validation.js");
 const supabase = (0, supabase_js_1.createClient)(config_1.config.supabase.url, config_1.config.supabase.serviceRoleKey || config_1.config.supabase.anonKey);
 function toUser(row) {
     const { password: _p, ...rest } = row;
     return rest;
 }
 async function signup(signupData) {
+    const email = (0, validation_js_1.normalizeEmail)(signupData.email);
+    const name = (0, validation_js_1.normalizeRequiredText)(signupData.name, 'Full name', 2, 120);
+    const phone = (0, validation_js_1.normalizePhoneNumber)(signupData.phone);
     if (!signupData.password || signupData.password.length < 8) {
         throw new http_error_js_1.HttpError(400, 'Password must be at least 8 characters');
     }
-    const existingUser = await (0, database_1.queryOne)('SELECT * FROM "User" WHERE email = $1', [
-        signupData.email,
+    const existingUser = await (0, database_1.queryOne)('SELECT * FROM "User" WHERE lower(email) = $1', [
+        email,
     ]);
     if (existingUser) {
         throw new http_error_js_1.HttpError(409, 'User already exists');
@@ -69,7 +73,7 @@ async function signup(signupData) {
         : types_1.UserRole.USER;
     const row = await (0, database_1.queryOne)(`INSERT INTO "User" (email, password, name, phone, role, "createdAt", "updatedAt")
      VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-     RETURNING *`, [signupData.email, hashedPassword, signupData.name, signupData.phone ?? null, requestedRole]);
+     RETURNING *`, [email, hashedPassword, name, phone, requestedRole]);
     if (!row)
         throw new http_error_js_1.HttpError(500, 'Failed to create user');
     if (requestedRole === types_1.UserRole.ADMIN) {
@@ -81,9 +85,8 @@ async function signup(signupData) {
     return generateTokens(row.id, row.email);
 }
 async function login(credentials) {
-    const user = await (0, database_1.queryOne)('SELECT * FROM "User" WHERE email = $1', [
-        credentials.email,
-    ]);
+    const email = (0, validation_js_1.normalizeEmail)(credentials.email);
+    const user = await (0, database_1.queryOne)('SELECT * FROM "User" WHERE lower(email) = $1', [email]);
     if (!user) {
         throw new http_error_js_1.HttpError(401, 'Invalid credentials');
     }

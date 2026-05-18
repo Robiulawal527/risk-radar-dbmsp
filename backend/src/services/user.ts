@@ -2,6 +2,7 @@ import * as bcrypt from 'bcryptjs';
 import { query, queryOne } from '@risk-radar/database';
 import type { User } from '@risk-radar/types';
 import { HttpError } from '../lib/http-error.js';
+import { normalizePhoneNumber, normalizeRequiredText } from '../lib/validation.js';
 
 type UserRow = {
   id: string;
@@ -85,11 +86,11 @@ export async function updateProfile(
 
   if (data.name !== undefined) {
     sets.push(`name = $${i++}`);
-    values.push(data.name);
+    values.push(normalizeRequiredText(data.name, 'Full name', 2, 120));
   }
   if (data.phone !== undefined) {
     sets.push(`phone = $${i++}`);
-    values.push(data.phone);
+    values.push(normalizePhoneNumber(data.phone));
   }
   if (data.avatar !== undefined) {
     sets.push(`avatar = $${i++}`);

@@ -5,7 +5,7 @@ import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Shield } from 'lucide-react';
+import { LockKeyhole, Mail, Shield, UserRound, Wrench } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -25,7 +25,33 @@ function LoginInner() {
   const searchParams = useSearchParams();
   const { setSession } = useAuthStore();
 
+  const ensureAccountProfile = async (accessToken: string) => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+    const { data } = await supabase.auth.getUser(accessToken);
+    const userId = data.user?.id;
+    const userEmail = data.user?.email ?? email.trim();
+    if (!userId || !userEmail) return;
+    const metadata = data.user?.user_metadata ?? {};
+    const displayName =
+      typeof metadata.name === 'string' && metadata.name.trim()
+        ? metadata.name.trim()
+        : userEmail.split('@')[0] || 'User';
+    const now = new Date().toISOString();
+    await supabase
+      .from('profiles')
+      .upsert({
+        id: userId,
+        email: userEmail,
+        full_name: displayName,
+        updated_at: now,
+      } as never)
+      .select('id')
+      .maybeSingle();
+  };
+
   const finishLogin = async (accessToken: string) => {
+    await ensureAccountProfile(accessToken);
     const meRes = await api.get<{ success: boolean; data: Record<string, unknown> }>('/auth/me', {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -74,9 +100,11 @@ function LoginInner() {
         email: email.trim(),
         password,
       });
-      if (error || !data.session?.access_token) {
-        await loginWithBackend();
-        return;
+      if (error) {
+        throw new Error(error.message || 'Sign in failed');
+      }
+      if (!data.session?.access_token) {
+        throw new Error('Sign in failed. Please try again.');
       }
       await finishLogin(data.session.access_token);
     } catch (err: unknown) {
@@ -103,84 +131,134 @@ function LoginInner() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#070b14] p-6">
-      <div className="w-full max-w-md">
-        <div className="mb-10 text-center">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-400 to-indigo-700 ring-1 ring-white/10">
-            <Shield className="h-8 w-8 text-white" />
+    <div className="min-h-screen bg-[#070b14] px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto grid min-h-[calc(100vh-4rem)] w-full max-w-6xl items-center gap-8 lg:grid-cols-[0.95fr_1.05fr]">
+        <section className="hidden lg:block">
+          <div className="max-w-xl">
+            <div className="mb-7 flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-400/15 ring-1 ring-teal-300/25">
+              <Shield className="h-7 w-7 text-teal-200" />
+            </div>
+            <p className="text-sm font-semibold uppercase tracking-[0.28em] text-teal-200">
+              Risk Radar
+            </p>
+            <h1 className="mt-4 text-5xl font-black tracking-tight text-white">
+              Welcome back to your safety dashboard.
+            </h1>
+            <p className="mt-5 text-lg leading-8 text-slate-300">
+              Sign in as a general user to report incidents, view the live map, and manage alerts.
+              Admin mode only opens for accounts already registered with admin access.
+            </p>
           </div>
-          <h1 className="text-4xl font-black tracking-tighter">Welcome back</h1>
-          <p className="mt-2 text-slate-400">Sign in to your Risk Radar account</p>
-        </div>
+        </section>
 
-        <div className="glass-panel">
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div>
-              <label className="mb-2 block text-xs tracking-widest text-slate-400">
-                ACCOUNT TYPE
-              </label>
-              <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/5 p-1">
-                {(['USER', 'ADMIN'] as AccountMode[]).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => setAccountMode(mode)}
-                    className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
-                      accountMode === mode
-                        ? 'bg-white text-slate-950'
-                        : 'text-slate-300 hover:bg-white/10'
-                    }`}
-                  >
-                    {mode === 'ADMIN' ? 'Admin' : 'User'}
-                  </button>
-                ))}
+        <div className="mx-auto w-full max-w-xl">
+          <div className="mb-7 text-center lg:text-left">
+            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-400/15 ring-1 ring-teal-300/25 lg:mx-0">
+              <Shield className="h-7 w-7 text-teal-200" />
+            </div>
+            <h2 className="text-4xl font-black tracking-tight text-white">Sign in</h2>
+            <p className="mt-2 text-slate-400">General user is selected by default.</p>
+          </div>
+
+          <div className="rounded-3xl border border-white/10 bg-slate-950/80 p-5 shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-7">
+            <form onSubmit={handleLogin} className="space-y-5">
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <label className="block text-xs tracking-widest text-slate-400">
+                    ACCOUNT TYPE
+                  </label>
+                  <span className="text-[10px] uppercase tracking-wide text-teal-300">
+                    User first
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 gap-2 rounded-2xl border border-white/10 bg-white/5 p-1 sm:grid-cols-2">
+                  {(['USER', 'ADMIN'] as AccountMode[]).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setAccountMode(mode)}
+                      className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                        accountMode === mode
+                          ? 'bg-white text-slate-950'
+                          : 'text-slate-300 hover:bg-white/10'
+                      }`}
+                    >
+                      {mode === 'ADMIN' ? (
+                        <Wrench className="h-4 w-4" />
+                      ) : (
+                        <UserRound className="h-4 w-4" />
+                      )}
+                      {mode === 'ADMIN' ? 'Admin account' : 'General user'}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  General user is the default. Admin mode verifies admin access before opening the
+                  dashboard.
+                </p>
               </div>
+
+              <div>
+                <label className="mb-2 block text-xs tracking-widest text-slate-400">EMAIL</label>
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-500" />
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                    className="pl-10"
+                    required
+                  />
+                </div>
+                <p className="mt-1.5 text-xs text-slate-500">
+                  Enter the email used when creating the account.
+                </p>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs tracking-widest text-slate-400">
+                  PASSWORD
+                </label>
+                <div className="relative">
+                  <LockKeyhole className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-500" />
+                  <Input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Your password"
+                    autoComplete="current-password"
+                    className="pl-10"
+                    required
+                  />
+                </div>
+                <p className="mt-1.5 text-xs text-slate-500">
+                  Used only to verify your account session.
+                </p>
+              </div>
+
+              <Button type="submit" className="premium-button mt-4 h-12 w-full" disabled={loading}>
+                {loading
+                  ? 'SIGNING IN…'
+                  : accountMode === 'ADMIN'
+                    ? 'SIGN IN AS ADMIN'
+                    : 'SIGN IN TO RISK RADAR'}
+              </Button>
+            </form>
+
+            <div className="mt-6 text-center text-sm text-slate-400">
+              Don&apos;t have an account?{' '}
+              <Link href="/auth/signup" className="text-teal-400 hover:underline">
+                Create one
+              </Link>
             </div>
-
-            <div>
-              <label className="mb-2 block text-xs tracking-widest text-slate-400">EMAIL</label>
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                autoComplete="email"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-xs tracking-widest text-slate-400">PASSWORD</label>
-              <Input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                autoComplete="current-password"
-                required
-              />
-            </div>
-
-            <Button type="submit" className="premium-button mt-4 h-12 w-full" disabled={loading}>
-              {loading
-                ? 'SIGNING IN…'
-                : accountMode === 'ADMIN'
-                  ? 'SIGN IN AS ADMIN'
-                  : 'SIGN IN TO RISK RADAR'}
-            </Button>
-          </form>
-
-          <div className="mt-6 text-center text-sm text-slate-400">
-            Don&apos;t have an account?{' '}
-            <Link href="/auth/signup" className="text-teal-400 hover:underline">
-              Create one
-            </Link>
           </div>
-        </div>
 
-        <p className="mt-8 text-center text-xs text-slate-500">
-          Use the account you registered with. Passwords are never stored in plain text.
-        </p>
+          <p className="mt-8 text-center text-xs text-slate-500">
+            Use the account you registered with. Passwords are never stored in plain text.
+          </p>
+        </div>
       </div>
     </div>
   );

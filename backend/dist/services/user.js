@@ -39,6 +39,7 @@ exports.searchUsersBySkill = searchUsersBySkill;
 const bcrypt = __importStar(require("bcryptjs"));
 const database_1 = require("@risk-radar/database");
 const http_error_js_1 = require("../lib/http-error.js");
+const validation_js_1 = require("../lib/validation.js");
 function toUser(row) {
     const { password: _p, ...rest } = row;
     return rest;
@@ -88,11 +89,11 @@ async function updateProfile(userId, data) {
     let i = 1;
     if (data.name !== undefined) {
         sets.push(`name = $${i++}`);
-        values.push(data.name);
+        values.push((0, validation_js_1.normalizeRequiredText)(data.name, 'Full name', 2, 120));
     }
     if (data.phone !== undefined) {
         sets.push(`phone = $${i++}`);
-        values.push(data.phone);
+        values.push((0, validation_js_1.normalizePhoneNumber)(data.phone));
     }
     if (data.avatar !== undefined) {
         sets.push(`avatar = $${i++}`);
