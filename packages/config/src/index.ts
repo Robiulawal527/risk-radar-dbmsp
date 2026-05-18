@@ -10,6 +10,9 @@ function isCloudRuntime(): boolean {
   if (process.env.RAILWAY_ENVIRONMENT) return true;
   if (process.env.RAILWAY_ENVIRONMENT_NAME) return true;
   if (process.env.RAILWAY_PROJECT_ID) return true;
+  if (process.env.RAILWAY_SERVICE_ID) return true;
+  if (process.env.RAILWAY_SERVICE_NAME) return true;
+  if (process.env.RAILWAY_DEPLOYMENT_ID) return true;
   return false;
 }
 
@@ -20,8 +23,8 @@ if (isCloudRuntime()) {
   if (!process.env.SUPABASE_ANON_KEY?.trim()) missing.push('SUPABASE_ANON_KEY');
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) missing.push('SUPABASE_SERVICE_ROLE_KEY');
   const db = process.env.DATABASE_URL?.trim() ?? '';
-  if (!db || /localhost|127\.0\.0\.1/i.test(db)) {
-    missing.push('DATABASE_URL (must be your hosted Postgres / Supabase connection string)');
+  if (!db || /localhost|127\.0\.0\.1/i.test(db) || !/^postgres(?:ql)?:\/\//i.test(db)) {
+    missing.push('DATABASE_URL (must be a hosted postgres:// or postgresql:// Supabase connection string)');
   }
   if (missing.length) {
     throw new Error(

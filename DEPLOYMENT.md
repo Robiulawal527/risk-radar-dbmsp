@@ -27,7 +27,7 @@ JWT_SECRET=<strong random value>
 SUPABASE_URL=https://<project-ref>.supabase.co
 SUPABASE_ANON_KEY=<anon key>
 SUPABASE_SERVICE_ROLE_KEY=<service role key>
-ALLOWED_ORIGINS=https://<your-vercel-app>.vercel.app,https://<your-custom-domain>
+ALLOWED_ORIGINS=https://riskradarbd.vercel.app
 NEARBY_ALERT_RADIUS_KM=10
 ```
 

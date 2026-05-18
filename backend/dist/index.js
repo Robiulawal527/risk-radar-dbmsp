@@ -40,10 +40,17 @@ const database_1 = require("@risk-radar/database");
 const config_1 = require("@risk-radar/config");
 const app_js_1 = require("./app.js");
 const sosService = __importStar(require("./services/sos.js"));
-/** Boots the Express API and Socket.IO bridge after confirming the database is reachable. */
+/** Boots the Express API and Socket.IO bridge, then reports database reachability. */
 async function main() {
-    await database_1.pool.query('SELECT 1');
-    console.log('✅ Database connected');
+    database_1.pool
+        .query('SELECT 1')
+        .then(() => {
+        console.log('✅ Database connected');
+    })
+        .catch((error) => {
+        const message = error instanceof Error ? error.message : 'Unknown database error';
+        console.warn(`⚠️ Database connection check failed: ${message}`);
+    });
     const app = (0, app_js_1.createApp)();
     const httpServer = (0, http_1.createServer)(app);
     const io = new socket_io_1.Server(httpServer, {

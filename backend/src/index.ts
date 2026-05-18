@@ -7,10 +7,17 @@ import { SOSStatus } from '@risk-radar/types';
 import { createApp } from './app.js';
 import * as sosService from './services/sos.js';
 
-/** Boots the Express API and Socket.IO bridge after confirming the database is reachable. */
+/** Boots the Express API and Socket.IO bridge, then reports database reachability. */
 async function main() {
-  await pool.query('SELECT 1');
-  console.log('✅ Database connected');
+  pool
+    .query('SELECT 1')
+    .then(() => {
+      console.log('✅ Database connected');
+    })
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Unknown database error';
+      console.warn(`⚠️ Database connection check failed: ${message}`);
+    });
 
   const app = createApp();
   const httpServer = createServer(app);

@@ -5,6 +5,13 @@ const express_1 = require("express");
 const database_1 = require("@risk-radar/database");
 const async_handler_js_1 = require("../lib/async-handler.js");
 exports.healthRouter = (0, express_1.Router)();
+exports.healthRouter.get('/live', (_req, res) => {
+    res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        service: 'risk-radar-api',
+    });
+});
 exports.healthRouter.get('/', (0, async_handler_js_1.asyncHandler)(async (_req, res) => {
     try {
         await database_1.pool.query('SELECT 1');

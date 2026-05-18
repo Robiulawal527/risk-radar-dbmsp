@@ -5,6 +5,14 @@ import { asyncHandler } from '../lib/async-handler.js';
 
 export const healthRouter: IRouter = Router();
 
+healthRouter.get('/live', (_req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    service: 'risk-radar-api',
+  });
+});
+
 healthRouter.get(
   '/',
   asyncHandler(async (_req, res) => {
