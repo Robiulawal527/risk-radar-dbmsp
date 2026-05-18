@@ -310,7 +310,7 @@ export default function ReportPage() {
               />
               <p id="report-description-hint" className="text-xs text-slate-500">
                 This box is for the detailed story: time, what happened, direction, vehicle or
-                clothing details, and injuries. Use voice typing for a longer description; it is
+                clothing details,criminal details, and injuries. Use voice typing for a longer description; it is
                 usually easier and faster.
               </p>
             </div>
@@ -328,8 +328,8 @@ export default function ReportPage() {
                     className={cn(
                       'rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
                       type === t
-                        ? 'border-teal-500/60 bg-teal-500/12 text-teal-100'
-                        : 'border-white/10 bg-white/[0.03] text-slate-400 hover:border-white/20 hover:text-slate-200'
+                        ? 'border-teal-500 bg-teal-500/12 text-teal-100'
+                        : 'border-white/20 bg-white/[0.03] text-slate-400 hover:border-white/40 hover:text-slate-200'
                     )}
                   >
                     {formatCrimeLabel(t)}
@@ -352,7 +352,7 @@ export default function ReportPage() {
                       'risk-badge border text-xs font-semibold capitalize transition-opacity',
                       severityStyle[s],
                       severity === s
-                        ? 'opacity-100 ring-2 ring-white/20'
+                        ? 'opacity-100 ring-2 ring-white/100'
                         : 'opacity-70 hover:opacity-100'
                     )}
                   >
