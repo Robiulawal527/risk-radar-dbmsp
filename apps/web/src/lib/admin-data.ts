@@ -46,6 +46,20 @@ export type AdminVolunteer = {
   updatedAt: Date;
 };
 
+export type AdminApplicant = {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+  nidNumber?: string | null;
+  education?: string | null;
+  educationField?: string | null;
+  photoUrl?: string | null;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type AdminCrimeInput = {
   id?: string;
   type: CrimeType;
@@ -93,6 +107,7 @@ export type VolunteerInput = {
 const CRIME_TABLES = ['crimes', 'Crime', 'crime', 'incidents'] as const;
 const CRIMINAL_TABLES = ['criminal_records', 'CriminalRecord'] as const;
 const VOLUNTEER_TABLES = ['volunteers', 'Volunteer'] as const;
+const ADMIN_TABLES = ['admins'] as const;
 
 function assertSupabase(): SupabaseClient {
   if (!isSupabaseConfigured()) throw new Error('Supabase is not configured.');
@@ -217,6 +232,22 @@ function normalizeVolunteer(row: Row): AdminVolunteer {
     activityCount,
     intensity,
     score: Math.round((num(row, 'score') ?? activityCount * intensity * 10) * 10) / 10,
+    createdAt: date(row, 'created_at', 'createdAt'),
+    updatedAt: date(row, 'updated_at', 'updatedAt'),
+  };
+}
+
+function normalizeAdminApplicant(row: Row): AdminApplicant {
+  return {
+    id: str(row, 'id') ?? crypto.randomUUID(),
+    name: str(row, 'name', 'full_name') ?? 'Admin applicant',
+    email: str(row, 'email') ?? '',
+    phone: str(row, 'phone'),
+    nidNumber: str(row, 'nid_number', 'nidNumber'),
+    education: str(row, 'education'),
+    educationField: str(row, 'education_field', 'educationField'),
+    photoUrl: str(row, 'photo_url', 'photoUrl'),
+    status: str(row, 'status') ?? 'PENDING',
     createdAt: date(row, 'created_at', 'createdAt'),
     updatedAt: date(row, 'updated_at', 'updatedAt'),
   };
@@ -443,6 +474,49 @@ export async function deleteVolunteer(id: string): Promise<void> {
   const table = await detectReadableTable(supabase, VOLUNTEER_TABLES);
   const { error } = await supabase.from(table).delete().eq('id', id);
   if (error) throw new Error(error.message);
+}
+
+export async function fetchAdminApplicants(limit = 100): Promise<AdminApplicant[]> {
+  const supabase = assertSupabase();
+  const table = await detectReadableTable(supabase, ADMIN_TABLES);
+  const { data, error } = await supabase
+    .from(table)
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as Row[]).map(normalizeAdminApplicant);
+}
+
+export async function updateAdminApplicantStatus(
+  applicant: AdminApplicant,
+  status: 'ACTIVE' | 'REJECTED'
+): Promise<void> {
+  const supabase = assertSupabase();
+  const now = nowIso();
+  const { error: adminError } = await supabase
+    .from('admins')
+    .update({
+      status,
+      reviewed_at: now,
+      rejection_reason: status === 'ACTIVE' ? null : 'Rejected by admin review',
+      updated_at: now,
+    } as never)
+    .eq('id', applicant.id);
+  if (adminError) throw new Error(adminError.message);
+
+  const { error: profileError } = await supabase.from('profiles').upsert(
+    {
+      id: applicant.id,
+      email: applicant.email,
+      full_name: applicant.name,
+      phone: applicant.phone ?? null,
+      role: status === 'ACTIVE' ? 'ADMIN' : 'USER',
+      updated_at: now,
+    } as never,
+    { onConflict: 'id' }
+  );
+  if (profileError) throw new Error(profileError.message);
 }
 
 export function buildCriminalRankings(rows: AdminCriminalRecord[]): CriminalRanking[] {

@@ -13,6 +13,7 @@ import {
   deleteAdminCrime,
   deleteCriminalRecord,
   deleteVolunteer,
+  fetchAdminApplicants,
   fetchAdminCrimes,
   fetchAdminSos,
   fetchCriminalRecords,
@@ -20,7 +21,9 @@ import {
   saveAdminCrime,
   saveCriminalRecord,
   saveVolunteer,
+  updateAdminApplicantStatus,
   updateAdminSosStatus,
+  type AdminApplicant,
   type AdminCrimeInput,
   type AdminCriminalRecord,
   type AdminVolunteer,
@@ -36,6 +39,7 @@ import {
   Plus,
   ShieldAlert,
   Trash2,
+  UserCheck,
   Users,
 } from 'lucide-react';
 import { PHONE_HINT, requireValidPhoneNumber } from '@/lib/validation';
@@ -146,6 +150,11 @@ export default function AdminPage() {
     queryFn: () => fetchVolunteers(80),
     enabled: isAdmin,
   });
+  const applicantsQ = useQuery({
+    queryKey: ['admin-applicants'],
+    queryFn: () => fetchAdminApplicants(80),
+    enabled: isAdmin,
+  });
 
   const stats = useMemo(() => {
     const crimes = crimesQ.data ?? [];
@@ -155,8 +164,11 @@ export default function AdminPage() {
       critical: crimes.filter((crime) => crime.severity === Severity.CRITICAL).length,
       activeSos: sos.filter((alert) => alert.status === SOSStatus.ACTIVE).length,
       volunteers: volunteersQ.data?.length ?? 0,
+      pendingAdmins:
+        applicantsQ.data?.filter((applicant) => applicant.status.toUpperCase() === 'PENDING')
+          .length ?? 0,
     };
-  }, [crimesQ.data, sosQ.data, volunteersQ.data]);
+  }, [applicantsQ.data, crimesQ.data, sosQ.data, volunteersQ.data]);
 
   const refreshAll = async () => {
     await Promise.all([
@@ -164,6 +176,7 @@ export default function AdminPage() {
       queryClient.invalidateQueries({ queryKey: ['admin-sos'] }),
       queryClient.invalidateQueries({ queryKey: ['admin-criminals'] }),
       queryClient.invalidateQueries({ queryKey: ['admin-volunteers'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-applicants'] }),
       queryClient.invalidateQueries({ queryKey: ['map-crimes'] }),
       queryClient.invalidateQueries({ queryKey: ['rankings-criminals'] }),
       queryClient.invalidateQueries({ queryKey: ['rankings-philanthropists'] }),
@@ -228,6 +241,22 @@ export default function AdminPage() {
       toast.error(err instanceof Error ? err.message : 'Could not update SOS status'),
   });
 
+  const reviewAdminM = useMutation({
+    mutationFn: ({
+      applicant,
+      status,
+    }: {
+      applicant: AdminApplicant;
+      status: 'ACTIVE' | 'REJECTED';
+    }) => updateAdminApplicantStatus(applicant, status),
+    onSuccess: async (_data, variables) => {
+      toast.success(variables.status === 'ACTIVE' ? 'Admin approved' : 'Admin rejected');
+      await refreshAll();
+    },
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : 'Could not update admin application'),
+  });
+
   if (!isAdmin) {
     return (
       <Card className="glass-panel mx-auto max-w-2xl border-amber-500/30 bg-amber-500/10">
@@ -271,8 +300,81 @@ export default function AdminPage() {
         <Stat icon={<AlertTriangle />} label="Reports" value={stats.crimes} />
         <Stat icon={<Gavel />} label="Critical" value={stats.critical} />
         <Stat icon={<ShieldAlert />} label="Active SOS" value={stats.activeSos} />
-        <Stat icon={<Users />} label="Volunteers" value={stats.volunteers} />
+        <Stat icon={<UserCheck />} label="Pending admins" value={stats.pendingAdmins} />
       </div>
+
+      <Card className="glass-panel border-amber-300/20">
+        <SectionTitle icon={<UserCheck />} title="Admin applications" />
+        <div className="grid gap-3 lg:grid-cols-2">
+          {applicantsQ.isLoading ? <LoadingRow /> : null}
+          {(applicantsQ.data ?? []).map((applicant) => (
+            <div
+              key={applicant.id}
+              className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+            >
+              <div className="flex items-start gap-4">
+                {applicant.photoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={applicant.photoUrl}
+                    alt={`${applicant.name} admin application photo`}
+                    className="h-16 w-16 rounded-2xl object-cover ring-1 ring-white/15"
+                  />
+                ) : (
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 text-slate-400">
+                    <UserCheck className="h-6 w-6" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="font-semibold">{applicant.name}</div>
+                    <Badge
+                      variant={
+                        applicant.status.toUpperCase() === 'ACTIVE'
+                          ? 'success'
+                          : applicant.status.toUpperCase() === 'REJECTED'
+                            ? 'destructive'
+                            : 'outline'
+                      }
+                    >
+                      {applicant.status}
+                    </Badge>
+                  </div>
+                  <div className="mt-1 text-xs text-slate-400">{applicant.email}</div>
+                  <div className="mt-3 grid gap-1 text-xs text-slate-300">
+                    <div>NID: {applicant.nidNumber || 'Not provided'}</div>
+                    <div>
+                      Education: {applicant.education || "Bachelor's degree"}
+                      {applicant.educationField ? `, ${applicant.educationField}` : ''}
+                    </div>
+                    {applicant.phone ? <div>Phone: {applicant.phone}</div> : null}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  disabled={reviewAdminM.isPending || applicant.status.toUpperCase() === 'ACTIVE'}
+                  onClick={() => reviewAdminM.mutate({ applicant, status: 'ACTIVE' })}
+                >
+                  Approve
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={reviewAdminM.isPending || applicant.status.toUpperCase() === 'REJECTED'}
+                  onClick={() => reviewAdminM.mutate({ applicant, status: 'REJECTED' })}
+                >
+                  Reject
+                </Button>
+              </div>
+            </div>
+          ))}
+          {!applicantsQ.isLoading && !applicantsQ.data?.length ? (
+            <Empty text="No admin applications yet." />
+          ) : null}
+        </div>
+      </Card>
 
       <div className="grid gap-6 xl:grid-cols-2">
         <Card className="glass-panel">

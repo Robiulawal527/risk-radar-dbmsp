@@ -61,22 +61,23 @@ export async function signup(signupData: SignupData): Promise<AuthToken> {
     (signupData as SignupData & { role?: UserRole }).role === UserRole.ADMIN
       ? UserRole.ADMIN
       : UserRole.USER;
+  const storedRole = requestedRole === UserRole.ADMIN ? UserRole.USER : requestedRole;
 
   const row = await queryOne<UserRow>(
     `INSERT INTO "User" (email, password, name, phone, role, "createdAt", "updatedAt")
      VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
      RETURNING *`,
-    [email, hashedPassword, name, phone, requestedRole]
+    [email, hashedPassword, name, phone, storedRole]
   );
 
   if (!row) throw new HttpError(500, 'Failed to create user');
 
   if (requestedRole === UserRole.ADMIN) {
     await query(
-      `INSERT INTO admins (id, email, name, "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, NOW(), NOW())
+      `INSERT INTO admins (id, email, name, status, "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, 'PENDING', NOW(), NOW())
        ON CONFLICT (id) DO UPDATE
-         SET email = EXCLUDED.email, name = EXCLUDED.name, "updatedAt" = NOW()`,
+         SET email = EXCLUDED.email, name = EXCLUDED.name, status = 'PENDING', "updatedAt" = NOW()`,
       [row.id, row.email, row.name]
     ).catch(() => undefined);
   }
@@ -128,7 +129,7 @@ export async function validateSupabaseToken(accessToken: string): Promise<User> 
     alertLongitude: number | null;
     alertsEnabled: boolean | null;
   } | null = null;
-  let adminRecord: { id: string } | null = null;
+  let adminRecord: { id: string; status: string | null } | null = null;
   try {
     profile = await queryOne<{
       full_name: string | null;
@@ -152,19 +153,19 @@ export async function validateSupabaseToken(accessToken: string): Promise<User> 
     // Missing table, wrong name, or DB mismatch — still create/sync local User from Supabase + metadata.
   }
   try {
-    adminRecord = await queryOne<{ id: string }>(
-      `SELECT id FROM admins WHERE id = $1 OR email = $2`,
+    adminRecord = await queryOne<{ id: string; status: string | null }>(
+      `SELECT id, status
+       FROM public.admins
+       WHERE (id = $1 OR lower(email) = lower($2))
+         AND upper(trim(coalesce(status, ''))) IN ('ACTIVE', 'APPROVED', 'VERIFIED', 'ENABLED')`,
       [supabaseUser.id, supabaseUser.email]
     );
   } catch {
     // The admins table is optional in older deployments.
   }
 
-  const metadataRole = String(supabaseUser.user_metadata?.role ?? '').toUpperCase();
   const resolvedRole =
-    adminRecord || profile?.role === UserRole.ADMIN || metadataRole === UserRole.ADMIN
-      ? UserRole.ADMIN
-      : UserRole.USER;
+    adminRecord || profile?.role?.trim().toUpperCase() === UserRole.ADMIN ? UserRole.ADMIN : UserRole.USER;
 
   let localUser = await queryOne<UserRow>('SELECT * FROM "User" WHERE email = $1', [
     supabaseUser.email,

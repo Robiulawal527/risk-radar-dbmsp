@@ -5,8 +5,8 @@ import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { LockKeyhole, Mail, Shield, UserRound, Wrench } from 'lucide-react';
-import { useAuthStore } from '@/store/auth';
+import { ArrowRight, LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
+import { useAuthStore, type AuthUser } from '@/store/auth';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { api } from '@/lib/api';
@@ -15,6 +15,11 @@ import { mapAuthUser, type AuthTokenResponse } from '@/lib/auth-session';
 import { UserRole } from '@/lib/types';
 
 type AccountMode = 'USER' | 'ADMIN';
+const ACTIVE_ADMIN_STATUSES = new Set(['ACTIVE', 'APPROVED', 'VERIFIED', 'ENABLED']);
+
+function isApprovedAdminStatus(value: unknown): boolean {
+  return typeof value === 'string' && ACTIVE_ADMIN_STATUSES.has(value.trim().toUpperCase());
+}
 
 function LoginInner() {
   const [email, setEmail] = useState('');
@@ -50,26 +55,66 @@ function LoginInner() {
       .maybeSingle();
   };
 
+  const promoteApprovedSupabaseAdmin = async (
+    accessToken: string,
+    authUser: AuthUser
+  ): Promise<AuthUser> => {
+    if (authUser.role === UserRole.ADMIN) return authUser;
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return authUser;
+
+    const { data } = await supabase.auth.getUser(accessToken);
+    const userId = data.user?.id;
+    const userEmail = data.user?.email ?? email.trim();
+    if (!userId) return authUser;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .maybeSingle();
+
+    const adminQuery = supabase.from('admins').select('status').eq('id', userId).maybeSingle();
+    let admin = (await adminQuery).data as Record<string, unknown> | null;
+    if (!admin && userEmail) {
+      const byEmail = await supabase
+        .from('admins')
+        .select('status')
+        .eq('email', userEmail)
+        .maybeSingle();
+      admin = (byEmail.data ?? null) as Record<string, unknown> | null;
+    }
+
+    const profileRole =
+      typeof (profile as Record<string, unknown> | null)?.role === 'string'
+        ? String((profile as Record<string, unknown>).role).trim().toUpperCase()
+        : '';
+    if (profileRole === 'ADMIN' || isApprovedAdminStatus(admin?.status)) {
+      return { ...authUser, role: UserRole.ADMIN };
+    }
+    return authUser;
+  };
+
   const finishLogin = async (accessToken: string) => {
     await ensureAccountProfile(accessToken);
     const meRes = await api.get<{ success: boolean; data: Record<string, unknown> }>('/auth/me', {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    const authUser = mapAuthUser(meRes.data.data);
+    const authUser = await promoteApprovedSupabaseAdmin(accessToken, mapAuthUser(meRes.data.data));
     if (accountMode === 'ADMIN' && authUser.role !== UserRole.ADMIN) {
       getSupabaseBrowserClient()
         ?.auth.signOut()
         .catch(() => {});
-      throw new Error('This account is not registered as an admin.');
+      throw new Error('This admin account is not approved yet. In Supabase, set public.admins.status to ACTIVE and public.profiles.role to ADMIN.');
     }
     setSession(accessToken, authUser);
 
-    toast.success(accountMode === 'ADMIN' ? 'Welcome back, admin' : 'Welcome back');
+    toast.success(authUser.role === UserRole.ADMIN ? 'Welcome back, admin' : 'Welcome back');
     const next = searchParams.get('next');
     router.push(
       next && next.startsWith('/')
         ? next
-        : accountMode === 'ADMIN'
+        : authUser.role === UserRole.ADMIN
           ? '/dashboard/admin'
           : '/dashboard/map'
     );
@@ -131,132 +176,103 @@ function LoginInner() {
   };
 
   return (
-    <div className="min-h-screen bg-[#070b14] px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto grid min-h-[calc(100vh-4rem)] w-full max-w-6xl items-center gap-8 lg:grid-cols-[0.95fr_1.05fr]">
+    <div className="min-h-screen bg-[#f7f4ee] px-4 py-6 text-[#27251f] sm:px-6 lg:px-8">
+      <div className="mx-auto grid min-h-[calc(100vh-3rem)] w-full max-w-6xl items-center gap-10 lg:grid-cols-[0.9fr_1.1fr]">
         <section className="hidden lg:block">
-          <div className="max-w-xl">
-            <div className="mb-7 flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-400/15 ring-1 ring-teal-300/25">
-              <Shield className="h-7 w-7 text-teal-200" />
+          <div className="max-w-md">
+            <div className="mb-8 flex h-12 w-12 items-center justify-center border border-[#d8d1c4] bg-[#fbfaf7]">
+              <ShieldCheck className="h-6 w-6 text-[#7d2f25]" />
             </div>
-            <p className="text-sm font-semibold uppercase tracking-[0.28em] text-teal-200">
+            <p className="text-xs font-medium uppercase tracking-[0.34em] text-[#7d2f25]">
               Risk Radar
             </p>
-            <h1 className="mt-4 text-5xl font-black tracking-tight text-white">
-              Welcome back to your safety dashboard.
+            <h1 className="mt-5 text-5xl font-semibold leading-tight text-[#27251f]">
+              Clear access for everyday safety.
             </h1>
-            <p className="mt-5 text-lg leading-8 text-slate-300">
-              Sign in as a general user to report incidents, view the live map, and manage alerts.
-              Admin mode only opens for accounts already registered with admin access.
+            <p className="mt-6 text-base leading-8 text-[#6d675c]">
+              Sign in once. Citizens go to the map and reports. Approved admins are recognized
+              automatically and taken to the operations dashboard.
             </p>
           </div>
         </section>
 
-        <div className="mx-auto w-full max-w-xl">
-          <div className="mb-7 text-center lg:text-left">
-            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-400/15 ring-1 ring-teal-300/25 lg:mx-0">
-              <Shield className="h-7 w-7 text-teal-200" />
-            </div>
-            <h2 className="text-4xl font-black tracking-tight text-white">Sign in</h2>
-            <p className="mt-2 text-slate-400">General user is selected by default.</p>
+        <div className="mx-auto w-full max-w-[480px]">
+          <div className="mb-8">
+            <p className="text-xs font-medium uppercase tracking-[0.28em] text-[#7d2f25]">
+              {accountMode === 'ADMIN' ? 'Admin entry' : 'Citizen entry'}
+            </p>
+            <h2 className="mt-3 text-4xl font-semibold text-[#27251f]">Welcome back</h2>
+            <p className="mt-3 text-sm leading-6 text-[#716b61]">
+              {accountMode === 'ADMIN'
+                ? 'Admin access opens after your application is approved.'
+                : 'Primary access for reports, SOS, live map, and neighborhood awareness.'}
+            </p>
           </div>
 
-          <div className="rounded-3xl border border-white/10 bg-slate-950/80 p-5 shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-7">
-            <form onSubmit={handleLogin} className="space-y-5">
+          <div className="border border-[#ded6c8] bg-[#fbfaf7] p-5 shadow-[0_24px_80px_rgba(39,37,31,0.08)] sm:p-8">
+            <form onSubmit={handleLogin} className="space-y-6">
               <div>
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <label className="block text-xs tracking-widest text-slate-400">
-                    ACCOUNT TYPE
-                  </label>
-                  <span className="text-[10px] uppercase tracking-wide text-teal-300">
-                    User first
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 gap-2 rounded-2xl border border-white/10 bg-white/5 p-1 sm:grid-cols-2">
-                  {(['USER', 'ADMIN'] as AccountMode[]).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setAccountMode(mode)}
-                      className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
-                        accountMode === mode
-                          ? 'bg-white text-slate-950'
-                          : 'text-slate-300 hover:bg-white/10'
-                      }`}
-                    >
-                      {mode === 'ADMIN' ? (
-                        <Wrench className="h-4 w-4" />
-                      ) : (
-                        <UserRound className="h-4 w-4" />
-                      )}
-                      {mode === 'ADMIN' ? 'Admin account' : 'General user'}
-                    </button>
-                  ))}
-                </div>
-                <p className="mt-2 text-xs text-slate-500">
-                  General user is the default. Admin mode verifies admin access before opening the
-                  dashboard.
-                </p>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-xs tracking-widest text-slate-400">EMAIL</label>
+                <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[#7d766b]">
+                  Email
+                </label>
                 <div className="relative">
-                  <Mail className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-500" />
+                  <Mail className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-[#8b8377]" />
                   <Input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
                     autoComplete="email"
-                    className="pl-10"
+                    className="h-12 rounded-none border border-[#d8d1c4] bg-[#fffdf9] pl-10 text-[#27251f] placeholder:text-[#aaa196] focus-visible:border-[#27251f] focus-visible:ring-0"
                     required
                   />
                 </div>
-                <p className="mt-1.5 text-xs text-slate-500">
-                  Enter the email used when creating the account.
-                </p>
               </div>
 
               <div>
-                <label className="mb-2 block text-xs tracking-widest text-slate-400">
-                  PASSWORD
+                <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[#7d766b]">
+                  Password
                 </label>
                 <div className="relative">
-                  <LockKeyhole className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-500" />
+                  <LockKeyhole className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-[#8b8377]" />
                   <Input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Your password"
                     autoComplete="current-password"
-                    className="pl-10"
+                    className="h-12 rounded-none border border-[#d8d1c4] bg-[#fffdf9] pl-10 text-[#27251f] placeholder:text-[#aaa196] focus-visible:border-[#27251f] focus-visible:ring-0"
                     required
                   />
                 </div>
-                <p className="mt-1.5 text-xs text-slate-500">
-                  Used only to verify your account session.
-                </p>
               </div>
 
-              <Button type="submit" className="premium-button mt-4 h-12 w-full" disabled={loading}>
-                {loading
-                  ? 'SIGNING IN…'
-                  : accountMode === 'ADMIN'
-                    ? 'SIGN IN AS ADMIN'
-                    : 'SIGN IN TO RISK RADAR'}
+              <Button
+                type="submit"
+                className="mt-2 h-12 w-full rounded-none bg-[#27251f] text-sm font-medium text-[#fbfaf7] shadow-none hover:bg-[#3a372f]"
+                disabled={loading}
+              >
+                <span>{loading ? 'Signing in...' : 'Sign in'}</span>
+                <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </form>
 
-            <div className="mt-6 text-center text-sm text-slate-400">
-              Don&apos;t have an account?{' '}
-              <Link href="/auth/signup" className="text-teal-400 hover:underline">
-                Create one
+            <div className="mt-7 flex flex-col gap-3 text-sm text-[#716b61] sm:flex-row sm:items-center sm:justify-between">
+              <Link href="/auth/signup" className="font-medium text-[#27251f] hover:text-[#7d2f25]">
+                Create account
               </Link>
+              <button
+                type="button"
+                onClick={() => setAccountMode(accountMode === 'ADMIN' ? 'USER' : 'ADMIN')}
+                className="text-left font-medium text-[#7d2f25] hover:text-[#27251f] sm:text-right"
+              >
+                {accountMode === 'ADMIN' ? 'Use citizen access' : 'Admin access'}
+              </button>
             </div>
           </div>
 
-          <p className="mt-8 text-center text-xs text-slate-500">
-            Use the account you registered with. Passwords are never stored in plain text.
+          <p className="mt-6 text-xs leading-5 text-[#817a70]">
+            Admin approval is checked quietly after sign-in.
           </p>
         </div>
       </div>

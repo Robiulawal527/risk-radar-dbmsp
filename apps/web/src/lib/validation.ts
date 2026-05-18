@@ -1,4 +1,5 @@
 export const PHONE_HINT = 'Use exactly 11 digits, e.g. 01712345678.';
+export const NID_HINT = 'NID must be exactly 10, 13, or 17 digits.';
 
 export function normalizePhoneNumber(value: string): string {
   const raw = value.trim();
@@ -21,4 +22,16 @@ export function requireValidPhoneNumber(value: string): string {
     throw new Error(`Phone number must be 11 digits and start with 01. ${PHONE_HINT}`);
   }
   return phone;
+}
+
+export function normalizeNidNumber(value: string): string {
+  return value.trim().replace(/\D/g, '');
+}
+
+export function requireValidNidNumber(value: string): string {
+  const nid = normalizeNidNumber(value);
+  if (![10, 13, 17].includes(nid.length)) {
+    throw new Error(NID_HINT);
+  }
+  return nid;
 }

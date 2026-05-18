@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+const ACTIVE_ADMIN_STATUSES = new Set(['ACTIVE', 'APPROVED', 'VERIFIED', 'ENABLED']);
+
 /** Resolve current user from Supabase JWT when Express is unreachable (isolated module for Route Handler bundling). */
 export async function supabaseAuthMeFallback(authorization: string): Promise<NextResponse> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
@@ -37,20 +39,28 @@ export async function supabaseAuthMeFallback(authorization: string): Promise<Nex
     )
     .eq('id', u.id)
     .maybeSingle();
-  const { data: admin } = await supabase
+  let { data: admin } = await supabase
     .from('admins')
     .select('id, status')
     .eq('id', u.id)
     .maybeSingle();
+  if (!admin && email) {
+    const byEmail = await supabase
+      .from('admins')
+      .select('id, status')
+      .eq('email', email)
+      .maybeSingle();
+    admin = byEmail.data;
+  }
   const profileData = (profile ?? {}) as Record<string, unknown>;
   const adminData = (admin ?? {}) as Record<string, unknown>;
   const metadata = u.user_metadata ?? {};
-  const metadataRole = typeof metadata.role === 'string' ? metadata.role.toUpperCase() : '';
-  const profileRole = typeof profileData.role === 'string' ? profileData.role.toUpperCase() : '';
+  const profileRole =
+    typeof profileData.role === 'string' ? profileData.role.trim().toUpperCase() : '';
   const adminActive =
     typeof adminData.status === 'string'
-      ? adminData.status.toUpperCase() !== 'DISABLED'
-      : Boolean(adminData.id);
+      ? ACTIVE_ADMIN_STATUSES.has(adminData.status.trim().toUpperCase())
+      : false;
   const name =
     (typeof profileData.full_name === 'string' && profileData.full_name.trim()) ||
     (typeof metadata.name === 'string' && metadata.name.trim()) ||
@@ -71,7 +81,7 @@ export async function supabaseAuthMeFallback(authorization: string): Promise<Nex
         (typeof profileData.avatar === 'string' ? profileData.avatar : undefined) ??
         (typeof metadata.avatar === 'string' ? metadata.avatar : undefined) ??
         undefined,
-      role: adminActive || profileRole === 'ADMIN' || metadataRole === 'ADMIN' ? 'ADMIN' : 'USER',
+      role: adminActive || profileRole === 'ADMIN' ? 'ADMIN' : 'USER',
       skills: Array.isArray(profileData.skills)
         ? profileData.skills.map(String)
         : Array.isArray(metadata.skills)
