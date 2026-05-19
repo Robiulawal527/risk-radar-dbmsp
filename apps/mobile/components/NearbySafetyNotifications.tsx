@@ -1,6 +1,10 @@
 import { useEffect } from 'react';
 import { router } from 'expo-router';
-import { addNearbyNotificationResponseListener, subscribeToNearbySafetyAlerts } from '@/lib/nearby-notifications';
+import {
+  addNearbyNotificationResponseListener,
+  pollBackendNearbyNotifications,
+  subscribeToNearbySafetyAlerts,
+} from '@/lib/nearby-notifications';
 import { useAuthStore } from '@/store/auth';
 
 export function NearbySafetyNotifications() {
@@ -9,6 +13,15 @@ export function NearbySafetyNotifications() {
   useEffect(() => {
     if (!isAuthenticated) return;
     return subscribeToNearbySafetyAlerts(() => useAuthStore.getState().user);
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    void pollBackendNearbyNotifications();
+    const timer = setInterval(() => {
+      void pollBackendNearbyNotifications();
+    }, 45_000);
+    return () => clearInterval(timer);
   }, [isAuthenticated]);
 
   useEffect(() => {

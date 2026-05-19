@@ -26,8 +26,8 @@ notificationsRouter.put(
 
 notificationsRouter.put(
   '/:id/read',
-  asyncHandler(async (req, res) => {
-    await notificationService.markAsRead(req.params.id);
+  asyncHandler(async (req: AuthedRequest, res) => {
+    await notificationService.markAsRead(req.params.id, req.user!.id);
     res.json({ success: true });
   })
 );

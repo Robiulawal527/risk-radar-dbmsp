@@ -14,8 +14,11 @@ export async function getUserNotifications(userId: string): Promise<Notification
   return notifications;
 }
 
-export async function markAsRead(id: string): Promise<void> {
-  await query(`UPDATE "Notification" SET "read" = true WHERE id = $1`, [id]);
+export async function markAsRead(id: string, userId: string): Promise<void> {
+  await query(`UPDATE "Notification" SET "read" = true WHERE id = $1 AND "userId" = $2`, [
+    id,
+    userId,
+  ]);
 }
 
 export async function markAllAsRead(userId: string): Promise<void> {

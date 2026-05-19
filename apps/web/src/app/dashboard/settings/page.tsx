@@ -29,6 +29,13 @@ function parseSkills(value: string): string[] {
     .filter((s) => s.length > 0);
 }
 
+async function requestBrowserNotificationPermission() {
+  if (typeof window === 'undefined' || !('Notification' in window)) return false;
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission === 'denied') return false;
+  return (await Notification.requestPermission()) === 'granted';
+}
+
 export default function SettingsPage() {
   const { user, logout, patchUser } = useAuthStore();
   const [name, setName] = useState('');
@@ -136,8 +143,11 @@ export default function SettingsPage() {
             alertsEnabled: true,
           });
           setAlertsEnabled(true);
+          const browserAllowed = await requestBrowserNotificationPermission();
           toast.success('Nearby alerts enabled', {
-            description: 'New incidents within your alert radius will create in-app notifications.',
+            description: browserAllowed
+              ? 'Crimes and SOS alerts near this point can trigger browser notifications.'
+              : 'Crimes and SOS alerts near this point will still appear as in-app alerts while signed in.',
           });
         } catch (err: unknown) {
           const supabase = getSupabaseBrowserClient();
@@ -157,7 +167,12 @@ export default function SettingsPage() {
                 alertsEnabled: true,
               });
               setAlertsEnabled(true);
-              toast.success('Nearby alerts enabled');
+              const browserAllowed = await requestBrowserNotificationPermission();
+              toast.success('Nearby alerts enabled', {
+                description: browserAllowed
+                  ? 'Browser notifications are ready.'
+                  : 'In-app alerts are ready while signed in.',
+              });
               return;
             }
           }

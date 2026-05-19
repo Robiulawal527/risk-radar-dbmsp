@@ -1,6 +1,7 @@
 import { query, queryOne } from '@risk-radar/database';
 import { SOSStatus, type Location, type SOSRequest } from '@risk-radar/types';
 import { HttpError } from '../lib/http-error.js';
+import { notifyUsersNearNewSos } from './nearby-alerts.js';
 
 type SosRow = {
   id: string;
@@ -69,11 +70,23 @@ export async function createSOSRequest(
   );
 
   if (!sosRequest) throw new HttpError(500, 'Failed to create SOS');
+  void notifyUsersNearNewSos({
+    sosId: sosRequest.id,
+    latitude: sosRequest.latitude,
+    longitude: sosRequest.longitude,
+    message: sosRequest.message,
+    senderUserId: userId,
+  }).catch((err) => console.error('nearby SOS alert dispatch failed', err));
+
   return formatSOSRequest(sosRequest);
 }
 
 /** Updates one owned SOS request only; status changes from other users return 404 to avoid leaking alert ids. */
-export async function updateSOSStatus(id: string, userId: string, status: SOSStatus | string): Promise<SOSRequest> {
+export async function updateSOSStatus(
+  id: string,
+  userId: string,
+  status: SOSStatus | string
+): Promise<SOSRequest> {
   const allowedStatuses = new Set(Object.values(SOSStatus));
   const normalizedStatus = String(status).toUpperCase() as SOSStatus;
   if (!allowedStatuses.has(normalizedStatus)) {

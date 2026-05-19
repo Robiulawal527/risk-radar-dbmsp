@@ -3,13 +3,24 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { CrimeType, NotificationType, Severity, SOSStatus, type User } from '@risk-radar/types';
 import { supabase, isSupabaseConfigured } from './supabase';
+import { api } from './api';
 
 const SEEN_KEY = 'risk-radar:seen-nearby-notifications';
 const NOTIFICATION_CHANNEL_ID = 'nearby-alerts';
 const DEFAULT_RADIUS_KM = Number(process.env.EXPO_PUBLIC_NEARBY_ALERT_RADIUS_KM ?? '10') || 10;
 const MAX_REALTIME_RETRIES = 5;
+const CRIME_TABLES = ['crimes', 'Crime', 'crime', 'incidents'] as const;
+const SOS_TABLES = ['sos_alerts', 'SOSRequest', 'sos_requests', 'sos'] as const;
 
 type RealtimeRow = Record<string, unknown>;
+type BackendNotification = {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  read?: boolean;
+  data?: Record<string, unknown>;
+};
 
 let notificationHandlerConfigured = false;
 
@@ -63,21 +74,23 @@ function getNumber(row: RealtimeRow, ...keys: string[]): number | undefined {
   return undefined;
 }
 
-function distanceKm(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
+function distanceKm(
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number }
+) {
   const earthKm = 6371;
   const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
   const dLng = ((b.longitude - a.longitude) * Math.PI) / 180;
   const lat1 = (a.latitude * Math.PI) / 180;
   const lat2 = (b.latitude * Math.PI) / 180;
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
   return earthKm * 2 * Math.asin(Math.sqrt(h));
 }
 
 function userAlertPoint(user: User | null) {
   if (!user || user.alertsEnabled === false) return null;
-  if (typeof user.alertLatitude !== 'number' || typeof user.alertLongitude !== 'number') return null;
+  if (typeof user.alertLatitude !== 'number' || typeof user.alertLongitude !== 'number')
+    return null;
   if (!Number.isFinite(user.alertLatitude) || !Number.isFinite(user.alertLongitude)) return null;
   return { latitude: user.alertLatitude, longitude: user.alertLongitude };
 }
@@ -90,7 +103,9 @@ async function seen(id: string): Promise<boolean> {
     if (raw) {
       try {
         const parsed = JSON.parse(raw);
-        ids = Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [];
+        ids = Array.isArray(parsed)
+          ? parsed.filter((value): value is string => typeof value === 'string')
+          : [];
       } catch {
         await AsyncStorage.removeItem(SEEN_KEY).catch(() => {});
       }
@@ -105,7 +120,9 @@ async function seen(id: string): Promise<boolean> {
   return false;
 }
 
-async function scheduleNearbyNotification(request: Parameters<typeof Notifications.scheduleNotificationAsync>[0]) {
+async function scheduleNearbyNotification(
+  request: Parameters<typeof Notifications.scheduleNotificationAsync>[0]
+) {
   try {
     configureNotificationHandler();
     await Notifications.scheduleNotificationAsync(request);
@@ -113,6 +130,56 @@ async function scheduleNearbyNotification(request: Parameters<typeof Notificatio
   } catch (error) {
     logNotificationWarning('Could not schedule local notification', error);
     return false;
+  }
+}
+
+async function notifyFromBackendRow(row: BackendNotification) {
+  if (
+    ![NotificationType.CRIME_ALERT, NotificationType.SOS_UPDATE].includes(
+      row.type as NotificationType
+    )
+  )
+    return;
+  if (await seen(`server:${row.id}`)) return;
+  const allowed = await requestNearbyNotificationPermission();
+  if (!allowed) return;
+
+  const isSos = row.type === NotificationType.SOS_UPDATE;
+  await scheduleNearbyNotification({
+    content: {
+      title: row.title || (isSos ? 'Live SOS near you' : 'New crime reported nearby'),
+      body:
+        row.message ||
+        (isSos ? 'Open the Radar map for live location.' : 'Open the Radar map for details.'),
+      sound: 'default',
+      priority: isSos
+        ? Notifications.AndroidNotificationPriority.MAX
+        : Notifications.AndroidNotificationPriority.HIGH,
+      data: {
+        ...(row.data ?? {}),
+        type: row.type,
+        id: row.id,
+        source: 'server',
+      },
+    },
+    trigger: null,
+  });
+}
+
+export async function pollBackendNearbyNotifications() {
+  try {
+    const response = await api.get<{ success: boolean; data?: BackendNotification[] }>(
+      '/notifications'
+    );
+    const rows = response.data.data ?? [];
+    await Promise.all(
+      rows
+        .filter((row) => !row.read)
+        .slice(0, 12)
+        .map(notifyFromBackendRow)
+    );
+  } catch (error) {
+    logNotificationWarning('Could not poll server notifications', error);
   }
 }
 
@@ -133,25 +200,38 @@ export async function requestNearbyNotificationPermission(): Promise<boolean> {
     }
 
     const current = await Notifications.getPermissionsAsync();
-    if (current.granted || current.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL) {
+    if (
+      current.granted ||
+      current.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL
+    ) {
       return true;
     }
     const requested = await Notifications.requestPermissionsAsync();
-    return requested.granted || requested.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+    return (
+      requested.granted ||
+      requested.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL
+    );
   } catch (error) {
     logNotificationWarning('Could not request notification permission', error);
     return false;
   }
 }
 
-export async function notifyNearbyCrime(row: RealtimeRow, user: User | null, radiusKm = DEFAULT_RADIUS_KM) {
+export async function notifyNearbyCrime(
+  row: RealtimeRow,
+  user: User | null,
+  radiusKm = DEFAULT_RADIUS_KM
+) {
   try {
     const alertPoint = userAlertPoint(user);
     const latitude = getNumber(row, 'latitude', 'lat');
     const longitude = getNumber(row, 'longitude', 'lng', 'lon');
     const reporterId = getString(row, 'user_id', 'userId', 'reporter_id');
-    const id = getString(row, 'id') ?? `${latitude}:${longitude}:${getString(row, 'created_at', 'createdAt')}`;
-    if (!alertPoint || latitude === undefined || longitude === undefined || reporterId === user?.id) return;
+    const id =
+      getString(row, 'id') ??
+      `${latitude}:${longitude}:${getString(row, 'created_at', 'createdAt')}`;
+    if (!alertPoint || latitude === undefined || longitude === undefined || reporterId === user?.id)
+      return;
 
     const distance = distanceKm(alertPoint, { latitude, longitude });
     if (distance > radiusKm || (await seen(`crime:${id}`))) return;
@@ -182,15 +262,22 @@ export async function notifyNearbyCrime(row: RealtimeRow, user: User | null, rad
   }
 }
 
-export async function notifyNearbySos(row: RealtimeRow, user: User | null, radiusKm = DEFAULT_RADIUS_KM) {
+export async function notifyNearbySos(
+  row: RealtimeRow,
+  user: User | null,
+  radiusKm = DEFAULT_RADIUS_KM
+) {
   try {
     const alertPoint = userAlertPoint(user);
     const latitude = getNumber(row, 'latitude', 'lat');
     const longitude = getNumber(row, 'longitude', 'lng', 'lon');
     const senderId = getString(row, 'user_id', 'userId');
     const status = getString(row, 'status')?.toUpperCase() ?? SOSStatus.ACTIVE;
-    const id = getString(row, 'id') ?? `${latitude}:${longitude}:${getString(row, 'created_at', 'createdAt')}`;
-    if (!alertPoint || latitude === undefined || longitude === undefined || senderId === user?.id) return;
+    const id =
+      getString(row, 'id') ??
+      `${latitude}:${longitude}:${getString(row, 'created_at', 'createdAt')}`;
+    if (!alertPoint || latitude === undefined || longitude === undefined || senderId === user?.id)
+      return;
     if (status !== SOSStatus.ACTIVE) return;
 
     const distance = distanceKm(alertPoint, { latitude, longitude });
@@ -257,36 +344,48 @@ export function subscribeToNearbySafetyAlerts(getUser: () => User | null) {
     }
     cleanupChannel();
 
-    const nextChannel = supabase
-      .channel(`mobile-nearby-safety-notifications-${Date.now()}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'crimes' }, (payload) => {
-        void notifyNearbyCrime(payload.new as RealtimeRow, getUser());
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sos_alerts' }, (payload) => {
-        void notifyNearbySos(payload.new as RealtimeRow, getUser());
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sos_alerts' }, (payload) => {
-        void notifyNearbySos(payload.new as RealtimeRow, getUser());
-      })
-      .subscribe((status, error) => {
-        if (closed || channel !== nextChannel) return;
-        if (status === 'SUBSCRIBED') {
-          retryCount = 0;
+    let nextChannel = supabase.channel(`mobile-nearby-safety-notifications-${Date.now()}`);
+    for (const table of CRIME_TABLES) {
+      nextChannel = nextChannel.on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table },
+        (payload) => {
+          void notifyNearbyCrime(payload.new as RealtimeRow, getUser());
+        }
+      );
+    }
+    for (const table of SOS_TABLES) {
+      nextChannel = nextChannel
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table }, (payload) => {
+          void notifyNearbySos(payload.new as RealtimeRow, getUser());
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table }, (payload) => {
+          void notifyNearbySos(payload.new as RealtimeRow, getUser());
+        });
+    }
+
+    nextChannel.subscribe((status, error) => {
+      if (closed || channel !== nextChannel) return;
+      if (status === 'SUBSCRIBED') {
+        retryCount = 0;
+        return;
+      }
+
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        if (retryCount >= MAX_REALTIME_RETRIES) {
+          logNotificationWarning(
+            'Realtime notification channel stopped reconnecting',
+            error ?? status
+          );
           return;
         }
 
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          if (retryCount >= MAX_REALTIME_RETRIES) {
-            logNotificationWarning('Realtime notification channel stopped reconnecting', error ?? status);
-            return;
-          }
-
-          retryCount += 1;
-          const delayMs = Math.min(30000, 1000 * 2 ** (retryCount - 1));
-          if (retryTimer) clearTimeout(retryTimer);
-          retryTimer = setTimeout(connect, delayMs);
-        }
-      });
+        retryCount += 1;
+        const delayMs = Math.min(30000, 1000 * 2 ** (retryCount - 1));
+        if (retryTimer) clearTimeout(retryTimer);
+        retryTimer = setTimeout(connect, delayMs);
+      }
+    });
     channel = nextChannel;
   };
 

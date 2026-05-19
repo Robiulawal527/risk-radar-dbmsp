@@ -4,10 +4,13 @@ import { Redirect } from 'expo-router';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useAuthHydration } from '@/hooks/useAuthHydration';
 import { useAuthStore } from '@/store/auth';
+import { UserRole } from '@risk-radar/types';
 
 export default function TabLayout() {
   const hydrated = useAuthHydration();
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const userRole = useAuthStore((state) => state.user?.role);
+  const isAdmin = String(userRole ?? '').toUpperCase() === UserRole.ADMIN;
 
   if (!hydrated) {
     return (
@@ -22,8 +25,8 @@ export default function TabLayout() {
   }
 
   return (
-    <Tabs 
-      screenOptions={{ 
+    <Tabs
+      screenOptions={{
         tabBarActiveTintColor: '#00E5FF',
         tabBarInactiveTintColor: '#64748b',
         tabBarStyle: {
@@ -84,6 +87,16 @@ export default function TabLayout() {
         options={{
           title: 'Community',
           tabBarIcon: ({ color }) => <MaterialIcons name="people" size={24} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="admin"
+        options={{
+          title: 'Admin',
+          href: isAdmin ? undefined : null,
+          tabBarIcon: ({ color }) => (
+            <MaterialIcons name="admin-panel-settings" size={24} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
