@@ -314,7 +314,7 @@ export default function MapPage() {
               </h1>
               <p className="mt-1 text-base text-slate-400 sm:text-lg md:text-xl">
                 Crime intensity and incidents
-                {isSupabaseConfigured() ? ' from your Supabase database' : ' across Dhaka'}
+                {isSupabaseConfigured() ? ' from database' : ' across Dhaka'}
               </p>
             </div>
           </div>
