@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, router } from 'expo-router';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
+import { requireValidEmail } from '@/lib/validation';
 import { MaterialIcons } from '@expo/vector-icons';
 
 export default function SignupScreen() {
@@ -12,20 +13,31 @@ export default function SignupScreen() {
   const [loading, setLoading] = useState(false);
 
   const onSignup = async () => {
-    if (!name || !email || !password) {
+    const displayName = name.trim();
+    if (!displayName || !email.trim() || !password) {
       setError('Please fill all fields');
+      return;
+    }
+    if (displayName.length < 2) {
+      setError('Full name must be at least 2 characters');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
       return;
     }
 
     try {
       setLoading(true);
       setError('');
+      const normalizedEmail = requireValidEmail(email);
+      if (normalizedEmail !== email) setEmail(normalizedEmail);
 
       const { data, error: signUpError } = await supabase.auth.signUp({
-        email,
+        email: normalizedEmail,
         password,
         options: {
-          data: { name },
+          data: { name: displayName },
         },
       });
 

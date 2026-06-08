@@ -134,8 +134,10 @@ export default function ReportScreen() {
       location &&
       Number.isFinite(location.latitude) &&
       Number.isFinite(location.longitude) &&
-      location.latitude !== 0 &&
-      location.longitude !== 0;
+      location.latitude >= -90 &&
+      location.latitude <= 90 &&
+      location.longitude >= -180 &&
+      location.longitude <= 180;
 
     if (!titleOk) {
       Alert.alert('Add a clearer title', `Use at least ${TITLE_MIN} characters so others can understand the incident.`);
@@ -150,7 +152,10 @@ export default function ReportScreen() {
       return;
     }
     if (!coordOk) {
-      Alert.alert('GPS coordinates required', 'Use current location or match your typed location before submitting.');
+      Alert.alert(
+        'GPS coordinates required',
+        'Use current location or enter a valid latitude (-90 to 90) and longitude (-180 to 180).'
+      );
       return;
     }
 

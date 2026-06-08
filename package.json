@@ -27,7 +27,7 @@
     "dotenv": "^16.4.5",
     "prettier": "^3.0.0",
     "prisma": "^6.19.3",
-    "turbo": "^2.0.0",
+    "turbo": "^2.9.16",
     "typescript": "^5.5.3"
   },
   "engines": {
@@ -37,5 +37,15 @@
   "packageManager": "pnpm@9.15.4",
   "dependencies": {
     "@prisma/client": "^6.19.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "glob": "^13.0.6",
+      "fast-xml-parser": "^5.8.0",
+      "postcss": "^8.5.15",
+      "qs": "^6.15.2",
+      "uuid": "^14.0.0",
+      "ws": "^8.21.0"
+    }
   }
 }

@@ -6,8 +6,11 @@ export const dynamic = 'force-dynamic';
 /** Edge avoids a dev/build bug where the Node app-route chunk for this catch-all throws `__webpack_require__.C is not a function` during static path generation. */
 export const runtime = 'edge';
 
-async function proxy(req: NextRequest, context: { params: { path: string[] } }): Promise<NextResponse> {
-  const segments = context.params.path ?? [];
+type RouteContext = { params: Promise<{ path: string[] }> };
+
+async function proxy(req: NextRequest, context: RouteContext): Promise<NextResponse> {
+  const params = await context.params;
+  const segments = params.path ?? [];
   const subpath = segments.join('/');
   const origin = getUpstreamApiOrigin();
   const target = `${origin}/api/${subpath}${req.nextUrl.search}`;
@@ -56,22 +59,22 @@ async function proxy(req: NextRequest, context: { params: { path: string[] } }):
   }
 }
 
-export async function GET(req: NextRequest, ctx: { params: { path: string[] } }) {
+export async function GET(req: NextRequest, ctx: RouteContext) {
   return proxy(req, ctx);
 }
 
-export async function POST(req: NextRequest, ctx: { params: { path: string[] } }) {
+export async function POST(req: NextRequest, ctx: RouteContext) {
   return proxy(req, ctx);
 }
 
-export async function PUT(req: NextRequest, ctx: { params: { path: string[] } }) {
+export async function PUT(req: NextRequest, ctx: RouteContext) {
   return proxy(req, ctx);
 }
 
-export async function PATCH(req: NextRequest, ctx: { params: { path: string[] } }) {
+export async function PATCH(req: NextRequest, ctx: RouteContext) {
   return proxy(req, ctx);
 }
 
-export async function DELETE(req: NextRequest, ctx: { params: { path: string[] } }) {
+export async function DELETE(req: NextRequest, ctx: RouteContext) {
   return proxy(req, ctx);
 }

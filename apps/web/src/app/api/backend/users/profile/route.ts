@@ -48,6 +48,16 @@ function normalizeSkills(value: unknown): string[] | undefined {
     .filter(Boolean);
 }
 
+function normalizeCoordinate(value: unknown, field: string, min: number, max: number): number | null | undefined {
+  if (value === null) return null;
+  if (value === undefined) return undefined;
+  const number = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(number) || number < min || number > max) {
+    throw new Error(`${field} must be between ${min} and ${max}.`);
+  }
+  return number;
+}
+
 function toApiUser(row: ProfileRow, fallbackEmail: string) {
   return {
     id: row.id,
@@ -203,10 +213,17 @@ async function putFallbackProfile(req: NextRequest) {
     }
   }
   if (typeof body.avatar === 'string') update.avatar = body.avatar.trim();
-  if (typeof body.alertLatitude === 'number') update.alert_latitude = body.alertLatitude;
-  if (body.alertLatitude === null) update.alert_latitude = null;
-  if (typeof body.alertLongitude === 'number') update.alert_longitude = body.alertLongitude;
-  if (body.alertLongitude === null) update.alert_longitude = null;
+  try {
+    const alertLatitude = normalizeCoordinate(body.alertLatitude, 'Alert latitude', -90, 90);
+    const alertLongitude = normalizeCoordinate(body.alertLongitude, 'Alert longitude', -180, 180);
+    if (alertLatitude !== undefined) update.alert_latitude = alertLatitude;
+    if (alertLongitude !== undefined) update.alert_longitude = alertLongitude;
+  } catch (err) {
+    return NextResponse.json(
+      { success: false, error: err instanceof Error ? err.message : 'Invalid coordinates' },
+      { status: 400 }
+    );
+  }
   if (typeof body.alertsEnabled === 'boolean') update.alerts_enabled = body.alertsEnabled;
   const skills = normalizeSkills(body.skills);
   if (skills) update.skills = skills;

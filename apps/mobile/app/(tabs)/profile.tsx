@@ -6,6 +6,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { api } from '@/lib/api';
 import { requestNearbyNotificationPermission } from '@/lib/nearby-notifications';
 import { supabase } from '@/lib/supabase';
+import { PHONE_HINT, requireValidPhoneNumber } from '@/lib/validation';
 import { useAuthStore } from '@/store/auth';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../constants/theme';
 
@@ -47,17 +48,26 @@ export default function ProfileScreen() {
     if (!user) return;
     setSaving(true);
     const skillsArr = parseSkills(skills);
+    let normalizedPhone = '';
+    try {
+      normalizedPhone = requireValidPhoneNumber(phone);
+      if (phone.trim() && normalizedPhone !== phone) setPhone(normalizedPhone);
+    } catch (err) {
+      setSaving(false);
+      Alert.alert('Invalid phone number', err instanceof Error ? err.message : PHONE_HINT);
+      return;
+    }
     try {
       const response = await api.put<{ success: boolean; data: Record<string, unknown> }>('/users/profile', {
         name: name.trim(),
-        phone: phone.trim(),
+        phone: normalizedPhone,
         skills: skillsArr,
         alertsEnabled,
       });
       const data = response.data.data ?? {};
       patchUser({
         name: String(data.name ?? name.trim()),
-        phone: data.phone != null ? String(data.phone) : phone.trim(),
+        phone: data.phone != null ? String(data.phone) : normalizedPhone,
         skills: Array.isArray(data.skills) ? (data.skills as string[]) : skillsArr,
         avatar: data.avatar != null ? String(data.avatar) : user.avatar,
         alertLatitude: typeof data.alertLatitude === 'number' ? data.alertLatitude : user.alertLatitude ?? null,
@@ -69,13 +79,13 @@ export default function ProfileScreen() {
       const { error } = await supabase.auth.updateUser({
         data: {
           name: name.trim(),
-          phone: phone.trim(),
+          phone: normalizedPhone,
           skills: skillsArr,
           alertsEnabled,
         },
       });
       if (!error) {
-        patchUser({ name: name.trim(), phone: phone.trim(), skills: skillsArr, alertsEnabled });
+        patchUser({ name: name.trim(), phone: normalizedPhone, skills: skillsArr, alertsEnabled });
         Alert.alert('Profile saved', 'Saved through your Supabase user metadata.');
       } else {
         Alert.alert('Could not save profile', getErrorMessage(err, error.message || 'Could not save profile.'));

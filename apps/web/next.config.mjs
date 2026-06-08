@@ -19,10 +19,10 @@ const nextConfig = {
       },
     ];
   },
+  /** Avoid broken server chunks when `@supabase/supabase-js` is imported from Route Handlers. */
+  serverExternalPackages: ['@supabase/supabase-js'],
   experimental: {
     optimizePackageImports: ['lucide-react'],
-    /** Avoid broken server chunks when `@supabase/supabase-js` is imported from Route Handlers (dev 404 + `__webpack_require__.C`). */
-    serverComponentsExternalPackages: ['@supabase/supabase-js'],
   },
 };
 

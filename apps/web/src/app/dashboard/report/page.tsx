@@ -64,7 +64,11 @@ export default function ReportPage() {
     latitude !== null &&
     longitude !== null &&
     Number.isFinite(latitude) &&
-    Number.isFinite(longitude);
+    Number.isFinite(longitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    longitude >= -180 &&
+    longitude <= 180;
   const showErrors = touched;
   const titleInvalid = showErrors && !titleOk;
   const descInvalid = showErrors && !descOk;
@@ -176,7 +180,8 @@ export default function ReportPage() {
     }
     if (!coordOk) {
       toast.error('GPS coordinates required', {
-        description: 'Tap “Use my location” so the incident can be placed on the map accurately.',
+        description:
+          'Use GPS or enter a valid latitude (-90 to 90) and longitude (-180 to 180).',
       });
       return;
     }
