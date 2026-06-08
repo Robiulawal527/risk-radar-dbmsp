@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const upstream = await fetch(target, { ...init, signal: AbortSignal.timeout(60_000) });
-    if (!upstream.ok && upstream.status === 404) {
+    if (!upstream.ok) {
       await upstream.arrayBuffer();
       return supabaseAuthMeFallback(authorization);
     }

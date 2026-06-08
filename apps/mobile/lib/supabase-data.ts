@@ -62,7 +62,7 @@ function crimePayload(input: CrimeInput, userId: string) {
     district: input.location.district ?? null,
     division: input.location.division ?? null,
     severity: input.severity,
-    status: 'REPORTED',
+    status: 'PENDING',
     reportedBy: input.reportedBy,
     userId,
     victimInfo: {},
@@ -235,6 +235,39 @@ async function ensureBackendUser() {
   }
 }
 
+async function ensureSupabaseProfile(auth: ReportAuth) {
+  const authedSupabase = supabaseWithAccessToken(auth.accessToken);
+  const { data } = await authedSupabase.auth.getUser(auth.accessToken);
+  const email = data.user?.email ?? useAuthStore.getState().user?.email ?? null;
+  const name =
+    useAuthStore.getState().user?.name ||
+    (typeof data.user?.user_metadata?.name === 'string' ? data.user.user_metadata.name : '') ||
+    email?.split('@')[0] ||
+    'User';
+
+  const { error } = await authedSupabase.from('profiles').upsert(
+    {
+      id: auth.userId,
+      email,
+      full_name: name,
+      role: 'user',
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'id' }
+  );
+  if (error) {
+    await authedSupabase.schema('app').from('user_profiles').upsert(
+      {
+        id: auth.userId,
+        full_name: name,
+        role: 'user',
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+  }
+}
+
 async function insertCrimeIntoSupabase(input: CrimeInput, auth: ReportAuth): Promise<Crime | null> {
   const authedSupabase = supabaseWithAccessToken(auth.accessToken);
   let lastError: unknown;
@@ -253,7 +286,7 @@ async function insertCrimeIntoSupabase(input: CrimeInput, auth: ReportAuth): Pro
           description: input.description,
           location: input.location,
           severity: input.severity,
-          status: String(row.status ?? 'REPORTED'),
+          status: String(row.status ?? 'PENDING'),
           reportedBy: input.reportedBy,
           dateTime: new Date(String(row.dateTime ?? row.date_time ?? row.occurred_at ?? input.dateTime)),
           createdAt: new Date(String(row.createdAt ?? row.created_at ?? input.dateTime)),
@@ -296,6 +329,7 @@ export async function submitCrimeReport(input: CrimeInput): Promise<Crime> {
         const message = firstError instanceof Error ? firstError.message.toLowerCase() : '';
         if (message.includes('foreign key') || message.includes('violates foreign key')) {
           try {
+            await ensureSupabaseProfile(auth);
             await ensureBackendUser();
             const crime = await insertCrimeIntoSupabase(input, auth);
             if (crime) return crime;

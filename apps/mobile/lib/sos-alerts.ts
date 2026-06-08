@@ -105,11 +105,17 @@ function withOptionalUuidId(payload: SosAlertRow, alertId: string): SosAlertRow[
   return [withoutUndefined({ id: alertId, ...payload }), withoutUndefined(payload)];
 }
 
+/** Builds a bigint-compatible id for the normalized public.sos_alerts compatibility view. */
+function numericAlertId(): number {
+  return Math.floor(Date.now() * 1000 + Math.random() * 1000);
+}
+
 /** Builds deduplicated insert payloads for public.sos_alerts and legacy SOSRequest schemas. */
 function createPayloads(userId: string, input: CreateSosAlertInput): SosAlertRow[] {
   const now = new Date().toISOString();
   const message = input.message ?? 'Emergency assistance requested';
   const alertId = uuidV4();
+  const publicAlertId = numericAlertId();
   const publicSos = withoutUndefined({
     user_id: userId,
     status: SOSStatus.ACTIVE,
@@ -140,7 +146,9 @@ function createPayloads(userId: string, input: CreateSosAlertInput): SosAlertRow
     createdAt: now,
   });
   const attempts = [
+    withoutUndefined({ id: publicAlertId, ...publicSos }),
     ...withOptionalUuidId(publicSos, alertId),
+    withoutUndefined({ id: publicAlertId, ...publicWithLocation }),
     ...withOptionalUuidId(publicWithLocation, alertId),
     ...withOptionalUuidId(appSchema, alertId),
   ];

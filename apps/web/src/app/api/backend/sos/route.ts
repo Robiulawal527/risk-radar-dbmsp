@@ -32,7 +32,7 @@ async function proxyToBackend(req: NextRequest) {
     signal: AbortSignal.timeout(60_000),
   });
 
-  if (!upstream.ok && upstream.status === 404) {
+  if (!upstream.ok) {
     await upstream.arrayBuffer();
     return null;
   }
@@ -88,18 +88,15 @@ async function postFallback(req: NextRequest) {
   }
 
   const { data, error } = await supabase
-    .from('SOSRequest')
+    .from('sos_alerts')
     .insert({
-      userId: authData.user.id,
+      id: Math.floor(Date.now() * 1000 + Math.random() * 1000),
+      user_id: authData.user.id,
       latitude: location.latitude,
       longitude: location.longitude,
-      address: location.address ?? null,
-      area: location.area ?? null,
-      district: location.district ?? null,
-      division: location.division ?? null,
       message: body.message ?? null,
-      contacts: [],
       status: 'ACTIVE',
+      created_at: new Date().toISOString(),
     })
     .select('*')
     .single();
@@ -121,14 +118,14 @@ async function postFallback(req: NextRequest) {
     success: true,
     data: {
       id: data.id,
-      userId: data.userId,
+      userId: data.user_id ?? data.userId,
       location: {
         latitude: data.latitude,
         longitude: data.longitude,
-        address: data.address ?? undefined,
-        area: data.area ?? undefined,
-        district: data.district ?? undefined,
-        division: data.division ?? undefined,
+        address: location.address ?? undefined,
+        area: location.area ?? undefined,
+        district: location.district ?? undefined,
+        division: location.division ?? undefined,
       },
       status: data.status,
       message: data.message ?? undefined,

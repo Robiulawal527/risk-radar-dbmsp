@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
       signal: AbortSignal.timeout(60_000),
     });
 
-    if (!upstream.ok && upstream.status === 404) {
+    if (!upstream.ok) {
       await upstream.arrayBuffer();
       return analyticsStatsFallback(req);
     }

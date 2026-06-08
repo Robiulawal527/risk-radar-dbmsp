@@ -85,11 +85,22 @@ export default function SignupPage() {
         email: userEmail,
         full_name: name.trim(),
         phone: normalizedPhone,
-        role: 'USER',
+        role: 'user',
         updated_at: now,
       } as never)
       .select('id')
       .maybeSingle();
+    if (profileWrite.error) {
+      await supabase.schema('app').from('user_profiles').upsert(
+        {
+          id: userId,
+          full_name: name.trim(),
+          role: 'user',
+          updated_at: now,
+        } as never,
+        { onConflict: 'id' }
+      );
+    }
 
     let adminWriteError: unknown = null;
     if (accountMode === 'ADMIN') {

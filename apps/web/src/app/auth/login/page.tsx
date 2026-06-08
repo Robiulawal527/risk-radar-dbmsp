@@ -43,16 +43,28 @@ function LoginInner() {
         ? metadata.name.trim()
         : userEmail.split('@')[0] || 'User';
     const now = new Date().toISOString();
-    await supabase
+    const profileWrite = await supabase
       .from('profiles')
       .upsert({
         id: userId,
         email: userEmail,
         full_name: displayName,
+        role: 'user',
         updated_at: now,
       } as never)
       .select('id')
       .maybeSingle();
+    if (profileWrite.error) {
+      await supabase.schema('app').from('user_profiles').upsert(
+        {
+          id: userId,
+          full_name: displayName,
+          role: 'user',
+          updated_at: now,
+        } as never,
+        { onConflict: 'id' }
+      );
+    }
   };
 
   const promoteApprovedSupabaseAdmin = async (

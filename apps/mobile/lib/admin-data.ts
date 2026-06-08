@@ -91,9 +91,23 @@ export type VolunteerInput = {
 const CRIME_TABLES = ['crimes', 'Crime', 'crime', 'incidents'] as const;
 const CRIMINAL_TABLES = ['criminal_records', 'CriminalRecord'] as const;
 const VOLUNTEER_TABLES = ['volunteers', 'Volunteer'] as const;
+const CRIME_REPORT_STATUSES = new Set(['PENDING', 'APPROVED', 'REJECTED', 'RESOLVED', 'ACTIVE']);
+const CRIMINAL_RECORD_STATUSES = new Set(['ACTIVE', 'INACTIVE', 'WANTED', 'ARRESTED', 'UNKNOWN']);
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function normalizeCrimeReportStatus(value: string) {
+  const status = value.trim().toUpperCase();
+  if (CRIME_REPORT_STATUSES.has(status)) return status;
+  if (status === 'REPORTED' || status === 'UNDER_REVIEW') return 'PENDING';
+  return 'PENDING';
+}
+
+function normalizeCriminalRecordStatus(value: string) {
+  const status = value.trim().toUpperCase();
+  return CRIMINAL_RECORD_STATUSES.has(status) ? status : 'UNKNOWN';
 }
 
 function getClient() {
@@ -233,7 +247,7 @@ function crimePayload(table: string, input: AdminCrimeInput): Row {
     district: input.district?.trim() || null,
     division: input.division?.trim() || null,
     severity: input.severity,
-    status: input.status.trim() || 'REPORTED',
+    status: normalizeCrimeReportStatus(input.status),
   };
 
   if (table === 'Crime') {
@@ -265,7 +279,7 @@ function criminalPayload(table: string, input: CriminalRecordInput): Row {
       name: input.name.trim(),
       description: input.description.trim(),
       knownAliases: input.knownAliases,
-      status: input.status.trim() || 'UNDER_REVIEW',
+      status: normalizeCriminalRecordStatus(input.status),
       crimeCount: input.crimeCount,
       updatedAt: nowIso(),
     };
@@ -275,7 +289,7 @@ function criminalPayload(table: string, input: CriminalRecordInput): Row {
     name: input.name.trim(),
     description: input.description.trim(),
     known_aliases: input.knownAliases,
-    status: input.status.trim() || 'UNDER_REVIEW',
+    status: normalizeCriminalRecordStatus(input.status),
     crime_count: input.crimeCount,
     intensity: input.intensity,
     most_frequent_crime: input.mostFrequentCrime,
@@ -334,7 +348,7 @@ export async function updateAdminApplicantStatus(
       email: applicant.email,
       full_name: applicant.name,
       phone: applicant.phone ?? null,
-      role: status === 'ACTIVE' ? 'ADMIN' : 'USER',
+      role: status === 'ACTIVE' ? 'admin' : 'user',
       updated_at: now,
     } as never,
     { onConflict: 'id' }

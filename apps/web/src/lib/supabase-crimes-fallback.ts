@@ -66,6 +66,12 @@ function isSchemaShapeError(message: string): boolean {
   );
 }
 
+function normalizeDbRole(value: unknown): 'user' | 'admin' | 'volunteer' {
+  const role = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (role === 'admin' || role === 'volunteer') return role;
+  return 'user';
+}
+
 function getBearer(req: Request): string | null {
   const authorization = req.headers.get('authorization') ?? '';
   return authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : null;
@@ -112,20 +118,33 @@ async function syncUser(supabase: SupabaseClient, user: SupabaseUser): Promise<s
     (typeof user.user_metadata?.name === 'string' && user.user_metadata.name.trim()) ||
     email.split('@')[0] ||
     'User';
+  const now = new Date().toISOString();
+
+  const { error: profileError } = await supabase.from('profiles').upsert(
+    {
+      id: user.id,
+      email,
+      full_name: name,
+      phone: typeof user.user_metadata?.phone === 'string' ? user.user_metadata.phone : null,
+      role: normalizeDbRole(user.user_metadata?.role),
+      updated_at: now,
+    },
+    { onConflict: 'id' }
+  );
+  if (profileError) {
+    const { error: appProfileError } = await supabase.schema('app').from('user_profiles').upsert(
+      {
+        id: user.id,
+        full_name: name,
+        role: normalizeDbRole(user.user_metadata?.role),
+        updated_at: now,
+      },
+      { onConflict: 'id' }
+    );
+    if (appProfileError) throw new Error(appProfileError.message || profileError.message);
+  }
 
   for (const table of ['User', 'users']) {
-    const { data: existingByEmail, error: lookupError } = await supabase
-      .from(table)
-      .select('id')
-      .eq('email', email)
-      .maybeSingle();
-    if (!lookupError && existingByEmail?.id) {
-      return String(existingByEmail.id);
-    }
-    if (lookupError && !isSchemaShapeError(lookupError.message)) {
-      continue;
-    }
-
     const { error } = await supabase.from(table).upsert(
       {
         id: user.id,
@@ -134,12 +153,12 @@ async function syncUser(supabase: SupabaseClient, user: SupabaseUser): Promise<s
         name,
         phone: typeof user.user_metadata?.phone === 'string' ? user.user_metadata.phone : null,
         role: 'USER',
-        updatedAt: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        updatedAt: now,
+        updated_at: now,
       },
       { onConflict: 'id' }
     );
-    if (!error) return user.id;
+    if (!error || isSchemaShapeError(error.message)) break;
   }
 
   return user.id;
@@ -174,7 +193,7 @@ function normalizeReportPayload(payload: ReportPayload, user: SupabaseUser, user
     district: payload.location?.district ?? null,
     division: payload.location?.division ?? null,
     severity,
-    status: 'REPORTED',
+    status: 'PENDING',
     reportedBy,
     userId,
     victimInfo: {},
@@ -381,7 +400,7 @@ function mapCrimeRow(row: Record<string, unknown>) {
       division: row.division ?? undefined,
     },
     severity: row.severity,
-    status: row.status ?? 'REPORTED',
+    status: row.status ?? 'PENDING',
     reportedBy: row.reportedBy ?? row.reported_by ?? 'Community reporter',
     dateTime: row.dateTime ?? row.date_time ?? row.createdAt ?? row.created_at,
     createdAt: row.createdAt ?? row.created_at,

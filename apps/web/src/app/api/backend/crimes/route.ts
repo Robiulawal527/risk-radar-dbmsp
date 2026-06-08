@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
       signal: AbortSignal.timeout(60_000),
     });
 
-    if (!upstream.ok && upstream.status === 404) {
+    if (!upstream.ok) {
       await upstream.arrayBuffer();
       return createCrimeFallback(new Request(req.url, { method: 'POST', headers: req.headers, body }));
     }

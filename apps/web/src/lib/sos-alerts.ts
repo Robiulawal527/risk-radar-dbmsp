@@ -90,6 +90,11 @@ function withOptionalUuidId(payload: SosRow, alertId: string): SosRow[] {
   return [withoutUndefined({ id: alertId, ...payload }), withoutUndefined(payload)];
 }
 
+/** Builds a bigint-compatible id for the normalized public.sos_alerts compatibility view. */
+function numericAlertId(): number {
+  return Math.floor(Date.now() * 1000 + Math.random() * 1000);
+}
+
 /** Extracts a plain Supabase error message from unknown error shapes. */
 function supabaseErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error) {
@@ -128,6 +133,7 @@ function createPayloads(params: {
   const now = new Date().toISOString();
   const message = params.message ?? 'Emergency assistance requested';
   const alertId = uuidV4();
+  const publicAlertId = numericAlertId();
   const publicSos = withoutUndefined({
     user_id: params.userId,
     status: SOSStatus.ACTIVE,
@@ -158,7 +164,9 @@ function createPayloads(params: {
     createdAt: now,
   });
   const attempts = [
+    withoutUndefined({ id: publicAlertId, ...publicSos }),
     ...withOptionalUuidId(publicSos, alertId),
+    withoutUndefined({ id: publicAlertId, ...publicWithLocation }),
     ...withOptionalUuidId(publicWithLocation, alertId),
     ...withOptionalUuidId(appSchema, alertId),
   ];

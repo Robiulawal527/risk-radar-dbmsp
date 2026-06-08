@@ -67,7 +67,7 @@ async function proxyToBackend(req: NextRequest) {
     signal: AbortSignal.timeout(60_000),
   });
 
-  if (!upstream.ok && upstream.status === 404) {
+  if (!upstream.ok) {
     await upstream.arrayBuffer();
     return null;
   }
@@ -100,10 +100,10 @@ async function fallback(req: NextRequest) {
   }
 
   const { data, error } = await supabase
-    .from('SOSRequest')
+    .from('sos_alerts')
     .select('*')
-    .eq('userId', authData.user.id)
-    .order('createdAt', { ascending: false })
+    .eq('user_id', authData.user.id)
+    .order('created_at', { ascending: false })
     .limit(50);
 
   if (error) {
