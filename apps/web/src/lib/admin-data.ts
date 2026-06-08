@@ -522,7 +522,7 @@ export async function updateAdminApplicantStatus(
     .eq('id', applicant.id);
   if (adminError) throw new Error(adminError.message);
 
-  const { error: profileError } = await supabase.from('profiles').upsert(
+  const { error: profileError } = await supabase.from('profiles').insert(
     {
       id: applicant.id,
       email: applicant.email,
@@ -530,8 +530,7 @@ export async function updateAdminApplicantStatus(
       phone: applicant.phone ?? null,
       role: status === 'ACTIVE' ? 'admin' : 'user',
       updated_at: now,
-    } as never,
-    { onConflict: 'id' }
+    } as never
   );
   if (profileError) throw new Error(profileError.message);
 }

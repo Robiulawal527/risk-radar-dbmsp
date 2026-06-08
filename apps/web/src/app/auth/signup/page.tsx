@@ -80,7 +80,7 @@ export default function SignupPage() {
     const normalizedNid = accountMode === 'ADMIN' ? requireValidNidNumber(nidNumber) : '';
     const profileWrite = await supabase
       .from('profiles')
-      .upsert({
+      .insert({
         id: userId,
         email: userEmail,
         full_name: name.trim(),
@@ -91,22 +91,14 @@ export default function SignupPage() {
       .select('id')
       .maybeSingle();
     if (profileWrite.error) {
-      await supabase.schema('app').from('user_profiles').upsert(
-        {
-          id: userId,
-          full_name: name.trim(),
-          role: 'user',
-          updated_at: now,
-        } as never,
-        { onConflict: 'id' }
-      );
+      console.warn('Profile sync skipped:', profileWrite.error.message);
     }
 
     let adminWriteError: unknown = null;
     if (accountMode === 'ADMIN') {
       const adminWrite = await supabase
         .from('admins')
-        .upsert({
+        .insert({
           id: userId,
           email: userEmail,
           name: name.trim(),

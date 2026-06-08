@@ -120,7 +120,7 @@ async function syncUser(supabase: SupabaseClient, user: SupabaseUser): Promise<s
     'User';
   const now = new Date().toISOString();
 
-  const { error: profileError } = await supabase.from('profiles').upsert(
+  const { error: profileError } = await supabase.from('profiles').insert(
     {
       id: user.id,
       email,
@@ -129,36 +129,36 @@ async function syncUser(supabase: SupabaseClient, user: SupabaseUser): Promise<s
       role: normalizeDbRole(user.user_metadata?.role),
       updated_at: now,
     },
-    { onConflict: 'id' }
   );
-  if (profileError) {
-    const { error: appProfileError } = await supabase.schema('app').from('user_profiles').upsert(
-      {
-        id: user.id,
-        full_name: name,
-        role: normalizeDbRole(user.user_metadata?.role),
-        updated_at: now,
-      },
-      { onConflict: 'id' }
-    );
-    if (appProfileError) throw new Error(appProfileError.message || profileError.message);
+  if (profileError && !isSchemaShapeError(profileError.message)) {
+    throw new Error(profileError.message);
   }
 
   for (const table of ['User', 'users']) {
-    const { error } = await supabase.from(table).upsert(
-      {
-        id: user.id,
-        email,
-        password: 'supabase-auth-user',
-        name,
-        phone: typeof user.user_metadata?.phone === 'string' ? user.user_metadata.phone : null,
-        role: 'USER',
-        updatedAt: now,
-        updated_at: now,
-      },
-      { onConflict: 'id' }
-    );
-    if (!error || isSchemaShapeError(error.message)) break;
+    const { data: existing, error: lookupError } = await supabase
+      .from(table)
+      .select('id')
+      .eq('email', email)
+      .maybeSingle();
+    if (lookupError && !isSchemaShapeError(lookupError.message)) {
+      continue;
+    }
+
+    const payload = {
+      id: user.id,
+      email,
+      password: 'supabase-auth-user',
+      name,
+      phone: typeof user.user_metadata?.phone === 'string' ? user.user_metadata.phone : null,
+      role: 'USER',
+      updatedAt: now,
+      updated_at: now,
+    };
+
+    const result = existing?.id
+      ? await supabase.from(table).update(payload).eq('id', existing.id)
+      : await supabase.from(table).insert(payload);
+    if (!result.error || isSchemaShapeError(result.error.message)) break;
   }
 
   return user.id;

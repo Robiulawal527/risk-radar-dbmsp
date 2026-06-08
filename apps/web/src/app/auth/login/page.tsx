@@ -45,7 +45,7 @@ function LoginInner() {
     const now = new Date().toISOString();
     const profileWrite = await supabase
       .from('profiles')
-      .upsert({
+      .insert({
         id: userId,
         email: userEmail,
         full_name: displayName,
@@ -55,15 +55,7 @@ function LoginInner() {
       .select('id')
       .maybeSingle();
     if (profileWrite.error) {
-      await supabase.schema('app').from('user_profiles').upsert(
-        {
-          id: userId,
-          full_name: displayName,
-          role: 'user',
-          updated_at: now,
-        } as never,
-        { onConflict: 'id' }
-      );
+      console.warn('Profile sync skipped:', profileWrite.error.message);
     }
   };
 

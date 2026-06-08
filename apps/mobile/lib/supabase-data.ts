@@ -245,7 +245,7 @@ async function ensureSupabaseProfile(auth: ReportAuth) {
     email?.split('@')[0] ||
     'User';
 
-  const { error } = await authedSupabase.from('profiles').upsert(
+  const { error } = await authedSupabase.from('profiles').insert(
     {
       id: auth.userId,
       email,
@@ -253,18 +253,9 @@ async function ensureSupabaseProfile(auth: ReportAuth) {
       role: 'user',
       updated_at: new Date().toISOString(),
     },
-    { onConflict: 'id' }
   );
   if (error) {
-    await authedSupabase.schema('app').from('user_profiles').upsert(
-      {
-        id: auth.userId,
-        full_name: name,
-        role: 'user',
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'id' }
-    );
+    console.warn('Profile sync skipped:', error.message);
   }
 }
 
