@@ -40,7 +40,6 @@
   },
   "pnpm": {
     "overrides": {
-      "glob": "^13.0.6",
       "fast-xml-parser": "^5.8.0",
       "postcss": "^8.5.15",
       "qs": "^6.15.2",
