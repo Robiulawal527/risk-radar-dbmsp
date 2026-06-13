@@ -17,7 +17,7 @@ import { CrimeType, Severity, type Crime } from '@risk-radar/types';
 import { api } from '@/lib/api';
 import { fetchCrimesForMapFromSupabase } from '@/lib/map-crimes';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../constants/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/constants/theme';
 
 const NEARBY_RADIUS_KM = Number(process.env.EXPO_PUBLIC_NEARBY_ALERT_RADIUS_KM ?? '10') || 10;
 const BANGLADESH_CENTER = { latitude: 23.685, longitude: 90.3563 };

@@ -15,7 +15,7 @@ import type { SocialRadarMatch } from '@risk-radar/types';
 import { fetchCommunityRankings } from '@/lib/rankings';
 import { searchProfilesBySkill } from '@/lib/supabase-data';
 import { useAuthStore } from '@/store/auth';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../constants/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/constants/theme';
 
 export default function CommunityScreen() {
   const { user } = useAuthStore();

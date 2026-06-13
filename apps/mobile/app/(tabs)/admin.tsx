@@ -36,7 +36,7 @@ import {
   type VolunteerInput,
 } from '@/lib/admin-data';
 import { useAuthStore } from '@/store/auth';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../constants/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/constants/theme';
 
 const panels = ['Applications', 'Reports', 'SOS', 'Rankings'] as const;
 type PanelKey = (typeof panels)[number];

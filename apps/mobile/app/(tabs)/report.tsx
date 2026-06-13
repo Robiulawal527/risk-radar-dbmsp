@@ -7,7 +7,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { CrimeType, Severity } from '@risk-radar/types';
 import { submitCrimeReport } from '@/lib/supabase-data';
 import { useAuthStore } from '@/store/auth';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../constants/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/constants/theme';
 
 const CRIME_TYPES = Object.values(CrimeType) as CrimeType[];
 const SEVERITIES = Object.values(Severity) as Severity[];

@@ -8,7 +8,7 @@ import { SOSStatus, type SOSRequest } from '@risk-radar/types';
 import { api } from '@/lib/api';
 import { createSosAlertInSupabase, fetchMySosAlertsFromSupabase, resolveSosAlertInSupabase } from '@/lib/sos-alerts';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../constants/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/constants/theme';
 
 const LOCAL_SOS_KEY = 'risk-radar:pending-sos-requests';
 const CREATE_SOS_ENDPOINTS = ['/sos', '/sos/'] as const;

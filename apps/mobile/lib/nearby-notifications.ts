@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
+import type * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { CrimeType, NotificationType, Severity, SOSStatus, type User } from '@risk-radar/types';
 import { supabase, isSupabaseConfigured } from './supabase';
@@ -23,6 +23,8 @@ type BackendNotification = {
 };
 
 let notificationHandlerConfigured = false;
+let notificationsModule: typeof Notifications | null = null;
+let notificationsLoadAttempted = false;
 
 function getErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error) {
@@ -36,10 +38,33 @@ function logNotificationWarning(message: string, error?: unknown) {
   console.warn(`[Risk Radar] ${message}.${details}`);
 }
 
-function configureNotificationHandler() {
-  if (notificationHandlerConfigured) return;
+async function getNotifications(): Promise<typeof Notifications | null> {
+  if (notificationsLoadAttempted) return notificationsModule;
+  notificationsLoadAttempted = true;
+  if (Platform.OS === 'web') {
+    notificationsModule = null;
+    return null;
+  }
   try {
-    Notifications.setNotificationHandler({
+    const mod = await import('expo-notifications');
+    notificationsModule = mod as typeof Notifications;
+    return notificationsModule;
+  } catch (error) {
+    logNotificationWarning('expo-notifications not fully available (use a development build for push notifications support in Expo Go)', error);
+    notificationsModule = null;
+    return null;
+  }
+}
+
+async function configureNotificationHandler() {
+  if (notificationHandlerConfigured) return;
+  const N = await getNotifications();
+  if (!N) {
+    notificationHandlerConfigured = true;
+    return;
+  }
+  try {
+    N.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
         shouldPlaySound: true,
@@ -53,8 +78,6 @@ function configureNotificationHandler() {
     logNotificationWarning('Local notifications are not available in this runtime', error);
   }
 }
-
-configureNotificationHandler();
 
 function getString(row: RealtimeRow, ...keys: string[]): string | undefined {
   for (const key of keys) {
@@ -124,8 +147,10 @@ async function scheduleNearbyNotification(
   request: Parameters<typeof Notifications.scheduleNotificationAsync>[0]
 ) {
   try {
-    configureNotificationHandler();
-    await Notifications.scheduleNotificationAsync(request);
+    await configureNotificationHandler();
+    const N = await getNotifications();
+    if (!N) return false;
+    await N.scheduleNotificationAsync(request);
     return true;
   } catch (error) {
     logNotificationWarning('Could not schedule local notification', error);
@@ -152,9 +177,7 @@ async function notifyFromBackendRow(row: BackendNotification) {
         row.message ||
         (isSos ? 'Open the Radar map for live location.' : 'Open the Radar map for details.'),
       sound: 'default',
-      priority: isSos
-        ? Notifications.AndroidNotificationPriority.MAX
-        : Notifications.AndroidNotificationPriority.HIGH,
+      priority: (isSos ? 'max' : 'high') as Notifications.AndroidNotificationPriority,
       data: {
         ...(row.data ?? {}),
         type: row.type,
@@ -179,7 +202,18 @@ export async function pollBackendNearbyNotifications() {
         .map(notifyFromBackendRow)
     );
   } catch (error) {
-    logNotificationWarning('Could not poll server notifications', error);
+    const msg = getErrorMessage(error).toLowerCase();
+    const isNetworkIssue = !((error as any)?.response) && /(network|net::|conn|timeout|aborted|fetch|ECONN)/.test(msg);
+    if (isNetworkIssue) {
+      // Throttle noisy network/backend-unavailable warnings (common when backend not running alongside expo or on device LAN)
+      const now = Date.now();
+      if (!((globalThis as any).__riskLastPollWarn) || now - (globalThis as any).__riskLastPollWarn > 120000) {
+        console.log('[Risk Radar] Server notifications poll unavailable (backend may be offline or unreachable from this device). Nearby realtime via Supabase still active.');
+        (globalThis as any).__riskLastPollWarn = now;
+      }
+    } else {
+      logNotificationWarning('Could not poll server notifications', error);
+    }
   }
 }
 
@@ -187,29 +221,31 @@ export async function requestNearbyNotificationPermission(): Promise<boolean> {
   if (Platform.OS === 'web') return false;
 
   try {
-    configureNotificationHandler();
+    await configureNotificationHandler();
+    const N = await getNotifications();
+    if (!N) return false;
 
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNEL_ID, {
+      await N.setNotificationChannelAsync(NOTIFICATION_CHANNEL_ID, {
         name: 'Nearby safety alerts',
-        importance: Notifications.AndroidImportance.MAX,
+        importance: 7 as Notifications.AndroidImportance,
         vibrationPattern: [0, 250, 120, 250],
         lightColor: '#FF2E63',
         sound: 'default',
       });
     }
 
-    const current = await Notifications.getPermissionsAsync();
+    const current = await N.getPermissionsAsync();
     if (
       current.granted ||
-      current.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL
+      current.ios?.status === N.IosAuthorizationStatus?.PROVISIONAL
     ) {
       return true;
     }
-    const requested = await Notifications.requestPermissionsAsync();
+    const requested = await N.requestPermissionsAsync();
     return (
       requested.granted ||
-      requested.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL
+      requested.ios?.status === N.IosAuthorizationStatus?.PROVISIONAL
     );
   } catch (error) {
     logNotificationWarning('Could not request notification permission', error);
@@ -290,7 +326,7 @@ export async function notifyNearbySos(
         title: 'Live SOS near you',
         body: `Someone sent an SOS ${distance.toFixed(1)} km away. Tap the Radar map to see the live location.`,
         sound: 'default',
-        priority: Notifications.AndroidNotificationPriority.MAX,
+        priority: 'max' as Notifications.AndroidNotificationPriority,
         data: {
           type: NotificationType.SOS_UPDATE,
           id,
@@ -309,14 +345,26 @@ export async function notifyNearbySos(
 }
 
 export function addNearbyNotificationResponseListener(onResponse: () => void) {
-  try {
-    configureNotificationHandler();
-    const subscription = Notifications.addNotificationResponseReceivedListener(onResponse);
-    return () => subscription.remove();
-  } catch (error) {
-    logNotificationWarning('Could not attach notification tap handler', error);
-    return () => {};
-  }
+  let removed = false;
+  let subscription: { remove: () => void } | null = null;
+
+  void (async () => {
+    try {
+      await configureNotificationHandler();
+      const N = await getNotifications();
+      if (!N || removed) return;
+      subscription = N.addNotificationResponseReceivedListener(() => {
+        if (!removed) onResponse();
+      });
+    } catch (error) {
+      logNotificationWarning('Could not attach notification tap handler', error);
+    }
+  })();
+
+  return () => {
+    removed = true;
+    subscription?.remove();
+  };
 }
 
 export function subscribeToNearbySafetyAlerts(getUser: () => User | null) {

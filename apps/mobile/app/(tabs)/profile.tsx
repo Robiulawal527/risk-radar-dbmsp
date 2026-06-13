@@ -8,7 +8,7 @@ import { requestNearbyNotificationPermission } from '@/lib/nearby-notifications'
 import { supabase } from '@/lib/supabase';
 import { PHONE_HINT, requireValidPhoneNumber } from '@/lib/validation';
 import { useAuthStore } from '@/store/auth';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../constants/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/constants/theme';
 
 function parseSkills(value: string): string[] {
   return value

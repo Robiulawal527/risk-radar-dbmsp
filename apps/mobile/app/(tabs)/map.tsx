@@ -10,7 +10,7 @@ import { api } from '@/lib/api';
 import { fetchCrimesForMapFromSupabase, filterCrimesByAreaQuery } from '@/lib/map-crimes';
 import { fetchActiveSosAlertsFromSupabase } from '@/lib/sos-alerts';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
-import { COLORS, RADIUS, SHADOWS, SPACING } from '../constants/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING } from '@/constants/theme';
 
 function crimesFromApiPayload(payload: unknown): Crime[] {
   if (Array.isArray(payload)) return payload as Crime[];
