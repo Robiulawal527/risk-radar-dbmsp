@@ -237,12 +237,20 @@ export default function AnalyticsScreen() {
         try {
           return await fetchCrimesForMapFromSupabase(5000);
         } catch {
-          const response = await api.get('/crimes?limit=5000');
-          return crimesFromApiPayload(response.data?.data);
+          try {
+            const response = await api.get('/crimes?limit=5000');
+            return crimesFromApiPayload(response.data?.data);
+          } catch {
+            return [];
+          }
         }
       }
-      const response = await api.get('/crimes?limit=5000');
-      return crimesFromApiPayload(response.data?.data);
+      try {
+        const response = await api.get('/crimes?limit=5000');
+        return crimesFromApiPayload(response.data?.data);
+      } catch {
+        return [];
+      }
     },
     staleTime: 15_000,
     refetchInterval: 60_000,

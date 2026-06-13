@@ -4,18 +4,29 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { env } from './env';
 
-const url = env.supabaseUrl.trim();
-const key = env.supabaseAnonKey.trim();
+const url = env.supabaseUrl?.trim() ?? '';
+const key = env.supabaseAnonKey?.trim() ?? '';
 
-if (!url || !key) {
-  console.warn(
-    '[Risk Radar] Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in apps/mobile/.env then restart Expo.'
-  );
+const isConfigured = Boolean(url && key);
+
+if (!isConfigured) {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    console.warn(
+      '[Risk Radar] Missing EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY (or PUBLISHABLE_KEY). ' +
+      'Supabase features (map, realtime alerts, auth) will be limited. Set them in apps/mobile/.env or root .env.local and run `pnpm env:sync`.'
+    );
+  } else {
+    // In production builds we want a loud signal if the client was built without keys.
+    console.error(
+      '[Risk Radar] CRITICAL: Supabase is not configured in this production build. ' +
+      'Make sure EXPO_PUBLIC_SUPABASE_* variables were present at build time (EAS / Expo build).'
+    );
+  }
 }
 
 export const supabase = createClient(
-  url || 'https://placeholder.supabase.co',
-  key || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.placeholder',
+  isConfigured ? url : 'https://placeholder.supabase.co',
+  isConfigured ? key : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.placeholder',
   {
     auth: {
       storage: AsyncStorage,
@@ -30,9 +41,13 @@ export function supabaseWithAccessToken(accessToken?: string | null): SupabaseCl
   const token = accessToken?.trim();
   if (!token) return supabase;
 
+  if (!isConfigured) {
+    return supabase; // will be the placeholder; callers should guard with isSupabaseConfigured()
+  }
+
   return createClient(
-    url || 'https://placeholder.supabase.co',
-    key || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.placeholder',
+    url,
+    key,
     {
       auth: {
         autoRefreshToken: false,
@@ -49,5 +64,5 @@ export function supabaseWithAccessToken(accessToken?: string | null): SupabaseCl
 }
 
 export function isSupabaseConfigured(): boolean {
-  return Boolean(url && key);
+  return isConfigured;
 }

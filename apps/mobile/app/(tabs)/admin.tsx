@@ -26,6 +26,8 @@ import {
   saveAdminCrime,
   saveCriminalRecord,
   saveVolunteer,
+  seedDemoCriminalRecords,
+  seedDemoVolunteers,
   updateAdminApplicantStatus,
   updateAdminSosStatus,
   type AdminApplicant,
@@ -490,6 +492,24 @@ export default function AdminScreen() {
                 saveCriminalM.mutate({ ...criminalForm, id: criminalEditId });
               }}
             />
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+              <TouchableOpacity
+                onPress={async () => {
+                  try {
+                    const n = await seedDemoCriminalRecords();
+                    Alert.alert('Demo seeded', `${n} sample criminal records added. Switch to Community tab to see them.`);
+                    await refreshAll();
+                  } catch (e) {
+                    Alert.alert('Seed failed', 'Could not insert demo records. Check Supabase connection and admin permissions.');
+                  }
+                }}
+                style={[styles.seedButton, saveCriminalM.isPending && { opacity: 0.6 }]}
+                disabled={saveCriminalM.isPending}
+              >
+                <MaterialIcons name="auto-awesome" size={16} color={COLORS.bg} />
+                <Text style={styles.seedButtonText}>Seed demo criminals</Text>
+              </TouchableOpacity>
+            </View>
             {criminals.map((row) => (
               <RankCard
                 key={row.id}
@@ -544,6 +564,24 @@ export default function AdminScreen() {
                 saveVolunteerM.mutate({ ...volunteerForm, id: volunteerEditId });
               }}
             />
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+              <TouchableOpacity
+                onPress={async () => {
+                  try {
+                    const n = await seedDemoVolunteers();
+                    Alert.alert('Demo seeded', `${n} sample volunteers added. Check Community tab for updated Volunteer Ranking.`);
+                    await refreshAll();
+                  } catch (e) {
+                    Alert.alert('Seed failed', 'Could not insert demo volunteers. Ensure admin RLS write access.');
+                  }
+                }}
+                style={[styles.seedButton, saveVolunteerM.isPending && { opacity: 0.6 }]}
+                disabled={saveVolunteerM.isPending}
+              >
+                <MaterialIcons name="auto-awesome" size={16} color={COLORS.bg} />
+                <Text style={styles.seedButtonText}>Seed demo volunteers</Text>
+              </TouchableOpacity>
+            </View>
             {volunteers.map((row) => (
               <RankCard
                 key={row.id}
@@ -1278,5 +1316,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: SPACING.lg,
     fontSize: 13,
+  },
+  seedButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.accent,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: RADIUS.full,
+  },
+  seedButtonText: {
+    color: COLORS.bg,
+    fontSize: 12,
+    fontWeight: '900',
   },
 });

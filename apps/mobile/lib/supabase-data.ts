@@ -3,6 +3,11 @@ import { api } from './api';
 import { supabase, supabaseWithAccessToken, isSupabaseConfigured } from './supabase';
 import { useAuthStore } from '@/store/auth';
 
+function getAuthedSupabase() {
+  const token = useAuthStore.getState().accessToken;
+  return token ? supabaseWithAccessToken(token) : supabase;
+}
+
 type CrimeInput = {
   type: CrimeType;
   category: CrimeType;
@@ -387,10 +392,11 @@ export async function searchProfilesBySkill(skill: string): Promise<SocialRadarM
   if (!query) return [];
 
   if (isSupabaseConfigured()) {
+    const authed = getAuthedSupabase();
     const { data: sessionData } = await supabase.auth.getSession();
     const currentUserId = sessionData.session?.user.id;
 
-    const { data, error } = await supabase
+    const { data, error } = await authed
       .from('profiles')
       .select('id, email, full_name, phone, avatar, role, skills')
       .order('full_name', { ascending: true })
@@ -404,7 +410,7 @@ export async function searchProfilesBySkill(skill: string): Promise<SocialRadarM
       if (matches.length > 0) return matches;
     }
 
-    const { data: users, error: usersError } = await supabase
+    const { data: users, error: usersError } = await authed
       .from('User')
       .select('id, email, name, phone, avatar, role, skills')
       .order('name', { ascending: true })

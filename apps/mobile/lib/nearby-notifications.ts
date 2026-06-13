@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { CrimeType, NotificationType, Severity, SOSStatus, type User } from '@risk-radar/types';
 import { supabase, isSupabaseConfigured } from './supabase';
 import { api } from './api';
@@ -9,7 +10,11 @@ const SEEN_KEY = 'risk-radar:seen-nearby-notifications';
 const NOTIFICATION_CHANNEL_ID = 'nearby-alerts';
 const DEFAULT_RADIUS_KM = Number(process.env.EXPO_PUBLIC_NEARBY_ALERT_RADIUS_KM ?? '10') || 10;
 const MAX_REALTIME_RETRIES = 5;
-const CRIME_TABLES = ['crimes', 'Crime', 'crime', 'incidents'] as const;
+const envCrime = (process.env.EXPO_PUBLIC_SUPABASE_CRIME_TABLE || '')
+  .split(',')
+  .map((s: string) => s.trim())
+  .filter(Boolean);
+const CRIME_TABLES: readonly string[] = Array.from(new Set([...envCrime, 'crimes', 'Crime', 'crime', 'incidents']));
 const SOS_TABLES = ['sos_alerts', 'SOSRequest', 'sos_requests', 'sos'] as const;
 
 type RealtimeRow = Record<string, unknown>;
@@ -38,13 +43,31 @@ function logNotificationWarning(message: string, error?: unknown) {
   console.warn(`[Risk Radar] ${message}.${details}`);
 }
 
+function isRunningInExpoGo(): boolean {
+  try {
+    // In Expo Go (the client), remote push is disabled for SDK >=53; local notifications still possible
+    // but the package auto-runs push token registration side-effects that hard-error in Go.
+    // We skip loading the module entirely in Go so the ERROR never appears. Nearby alerts still
+    // work via Supabase realtime. Full local+push notifications work in dev-client / standalone builds.
+    const c = Constants as any;
+    return Constants.appOwnership === 'expo' ||
+      c.executionEnvironment === 'storeClient' ||
+      !!c.expoGo ||
+      !!c.__expo;
+  } catch {
+    return false;
+  }
+}
+
 async function getNotifications(): Promise<typeof Notifications | null> {
   if (notificationsLoadAttempted) return notificationsModule;
   notificationsLoadAttempted = true;
-  if (Platform.OS === 'web') {
+
+  if (Platform.OS === 'web' || isRunningInExpoGo()) {
     notificationsModule = null;
     return null;
   }
+
   try {
     const mod = await import('expo-notifications');
     notificationsModule = mod as typeof Notifications;
@@ -203,12 +226,14 @@ export async function pollBackendNearbyNotifications() {
     );
   } catch (error) {
     const msg = getErrorMessage(error).toLowerCase();
+    const status = (error as any)?.response?.status;
     const isNetworkIssue = !((error as any)?.response) && /(network|net::|conn|timeout|aborted|fetch|ECONN)/.test(msg);
-    if (isNetworkIssue) {
-      // Throttle noisy network/backend-unavailable warnings (common when backend not running alongside expo or on device LAN)
+    const isMissingOrClientError = !!status && status >= 400 && status < 500; // 404 (no /notifications on that server), 401 etc. are common when backend not the real one or not running
+    if (isNetworkIssue || isMissingOrClientError) {
+      // Throttle noisy warnings (common when only expo is started, API_URL points at web dev server, or no backend)
       const now = Date.now();
       if (!((globalThis as any).__riskLastPollWarn) || now - (globalThis as any).__riskLastPollWarn > 120000) {
-        console.log('[Risk Radar] Server notifications poll unavailable (backend may be offline or unreachable from this device). Nearby realtime via Supabase still active.');
+        console.log('[Risk Radar] Server notifications poll unavailable (backend may be offline or the API base does not serve /notifications). Realtime via Supabase still works for nearby alerts.');
         (globalThis as any).__riskLastPollWarn = now;
       }
     } else {

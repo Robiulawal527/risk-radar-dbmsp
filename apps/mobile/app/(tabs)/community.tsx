@@ -31,7 +31,11 @@ export default function CommunityScreen() {
     onError: () => Alert.alert('Search failed', 'Could not load matching community members.'),
   });
 
-  const { data: rankings, isError: rankingsError } = useQuery({
+  const {
+    data: rankings,
+    isError: rankingsError,
+    isLoading: rankingsLoading,
+  } = useQuery({
     queryKey: ['community-rankings'],
     queryFn: fetchCommunityRankings,
     staleTime: 20_000,
@@ -187,9 +191,12 @@ export default function CommunityScreen() {
           </View>
           <Text style={styles.sectionTitle}>Volunteer Ranking</Text>
         </View>
+        {rankingsLoading ? <Text style={styles.emptyText}>Loading rankings...</Text> : null}
         {rankingsError ? <Text style={styles.emptyText}>Could not load rankings.</Text> : null}
-        {(rankings?.philanthropists ?? []).length === 0 && !rankingsError ? (
-          <Text style={styles.emptyText}>No volunteer activity yet.</Text>
+        {!rankingsLoading &&
+        !rankingsError &&
+        (rankings?.philanthropists ?? []).length === 0 ? (
+          <Text style={styles.emptyText}>No volunteer activity yet. (Admins: use Admin tab &gt; Rankings &gt; "Seed demo volunteers")</Text>
         ) : null}
         {rankings?.philanthropists?.slice(0, 5).map((champ) => (
           <View key={champ.userId} style={styles.championCard}>
@@ -213,8 +220,12 @@ export default function CommunityScreen() {
           </View>
           <Text style={styles.sectionTitle}>Criminal Records</Text>
         </View>
-        {(rankings?.criminals ?? []).length === 0 && !rankingsError ? (
-          <Text style={styles.emptyText}>No criminal records yet.</Text>
+        {rankingsLoading ? <Text style={styles.emptyText}>Loading criminal records...</Text> : null}
+        {rankingsError ? <Text style={styles.emptyText}>Could not load criminal records.</Text> : null}
+        {!rankingsLoading &&
+        !rankingsError &&
+        (rankings?.criminals ?? []).length === 0 ? (
+          <Text style={styles.emptyText}>No criminal records yet. (Admins: use Admin tab &gt; Rankings panel &gt; "Seed demo criminals" for showcase.)</Text>
         ) : null}
         {rankings?.criminals?.slice(0, 5).map((criminal) => (
           <View key={`${criminal.rank}-${criminal.criminalInfo.name}`} style={styles.criminalCard}>

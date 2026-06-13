@@ -49,7 +49,7 @@ exports.notificationsRouter.put('/read-all', (0, async_handler_js_1.asyncHandler
     res.json({ success: true });
 }));
 exports.notificationsRouter.put('/:id/read', (0, async_handler_js_1.asyncHandler)(async (req, res) => {
-    await notificationService.markAsRead(req.params.id);
+    await notificationService.markAsRead(req.params.id, req.user.id);
     res.json({ success: true });
 }));
 //# sourceMappingURL=notifications.js.map

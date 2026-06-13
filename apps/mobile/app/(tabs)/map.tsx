@@ -57,12 +57,22 @@ export default function MapScreen() {
         try {
           return await fetchCrimesForMapFromSupabase(3000);
         } catch {
-          const response = await api.get('/crimes?limit=3000');
-          return crimesFromApiPayload(response.data?.data);
+          try {
+            const response = await api.get('/crimes?limit=3000');
+            return crimesFromApiPayload(response.data?.data);
+          } catch {
+            // Both sources failed (e.g. Supabase RLS/table issue + API 404 or unreachable).
+            // Return empty so map renders; user still gets realtime subscription updates if any rows arrive later.
+            return [];
+          }
         }
       }
-      const response = await api.get('/crimes?limit=3000');
-      return crimesFromApiPayload(response.data?.data);
+      try {
+        const response = await api.get('/crimes?limit=3000');
+        return crimesFromApiPayload(response.data?.data);
+      } catch {
+        return [];
+      }
     },
     staleTime: 20_000,
     refetchInterval: 45_000,
@@ -71,7 +81,13 @@ export default function MapScreen() {
 
   const { data: activeSosAlerts = [], isError: sosError } = useQuery({
     queryKey: ['active-sos-alerts'],
-    queryFn: () => fetchActiveSosAlertsFromSupabase(200),
+    queryFn: async () => {
+      try {
+        return await fetchActiveSosAlertsFromSupabase(200);
+      } catch {
+        return [];
+      }
+    },
     enabled: isSupabaseConfigured(),
     staleTime: 5_000,
     refetchInterval: 15_000,

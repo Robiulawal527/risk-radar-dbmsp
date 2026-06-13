@@ -8,6 +8,7 @@ exports.getUserSOSRequests = getUserSOSRequests;
 const database_1 = require("@risk-radar/database");
 const types_1 = require("@risk-radar/types");
 const http_error_js_1 = require("../lib/http-error.js");
+const nearby_alerts_js_1 = require("./nearby-alerts.js");
 /** Converts the database SOS row into the shared API shape used by mobile and web clients. */
 function formatSOSRequest(request) {
     return {
@@ -50,6 +51,13 @@ async function createSOSRequest(userId, location, message) {
     ]);
     if (!sosRequest)
         throw new http_error_js_1.HttpError(500, 'Failed to create SOS');
+    void (0, nearby_alerts_js_1.notifyUsersNearNewSos)({
+        sosId: sosRequest.id,
+        latitude: sosRequest.latitude,
+        longitude: sosRequest.longitude,
+        message: sosRequest.message,
+        senderUserId: userId,
+    }).catch((err) => console.error('nearby SOS alert dispatch failed', err));
     return formatSOSRequest(sosRequest);
 }
 /** Updates one owned SOS request only; status changes from other users return 404 to avoid leaking alert ids. */

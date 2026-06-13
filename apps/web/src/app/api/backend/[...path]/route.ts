@@ -24,15 +24,12 @@ async function proxy(req: NextRequest, context: RouteContext): Promise<NextRespo
     init.body = await req.arrayBuffer();
   }
 
+  const isNotificationsPoll = req.method === 'GET' && subpath === 'notifications';
+
   try {
     const upstream = await fetch(target, { ...init, signal: AbortSignal.timeout(60_000) });
 
-    if (
-      !upstream.ok &&
-      upstream.status === 404 &&
-      req.method === 'GET' &&
-      subpath === 'notifications'
-    ) {
+    if (!upstream.ok && (upstream.status === 404 || upstream.status === 401) && isNotificationsPoll) {
       await upstream.arrayBuffer();
       return NextResponse.json({ success: true, data: [] }, { headers: { 'content-type': 'application/json' } });
     }
@@ -46,13 +43,13 @@ async function proxy(req: NextRequest, context: RouteContext): Promise<NextRespo
     });
     return new NextResponse(body, { status: upstream.status, headers });
   } catch {
-    if (req.method === 'GET' && subpath === 'notifications') {
+    if (isNotificationsPoll) {
       return NextResponse.json({ success: true, data: [] }, { headers: { 'content-type': 'application/json' } });
     }
     return NextResponse.json(
       {
         success: false,
-        error: `Cannot reach API at ${origin}. Start the backend from the repo root: pnpm backend`,
+        error: `Cannot reach API at ${origin}. Start the backend with "pnpm dev" (or "pnpm backend") from the repo root.`,
       },
       { status: 503 }
     );

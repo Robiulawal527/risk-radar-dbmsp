@@ -34,6 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.notifyUsersNearNewCrime = notifyUsersNearNewCrime;
+exports.notifyUsersNearNewSos = notifyUsersNearNewSos;
 const database_1 = require("@risk-radar/database");
 const types_1 = require("@risk-radar/types");
 const notificationService = __importStar(require("./notification.js"));
@@ -44,14 +45,9 @@ function defaultRadiusKm() {
         return Number(env);
     return 10;
 }
-/**
- * Notify users who opted in with a saved alert location within `radiusKm` of the new incident.
- * Skips the reporter. Uses Haversine distance in SQL (Postgres).
- */
-async function notifyUsersNearNewCrime(params) {
-    const radiusKm = defaultRadiusKm();
-    const { crimeId, latitude, longitude, title, area, reporterUserId } = params;
-    const rows = await (0, database_1.query)(`SELECT u.id
+async function findUsersNearPoint(params) {
+    const { latitude, longitude, excludeUserId, radiusKm } = params;
+    return (0, database_1.query)(`SELECT u.id
      FROM "User" u
      WHERE u."alertsEnabled" = true
        AND u."alertLatitude" IS NOT NULL
@@ -65,16 +61,53 @@ async function notifyUsersNearNewCrime(params) {
              * power(sin(radians($3 - u."alertLongitude") / 2), 2)
            )
          )
-       ) <= $4`, [reporterUserId, latitude, longitude, radiusKm]);
-    const place = area?.trim() || 'Nearby';
-    const msg = `${title} — reported in ${place} (within ~${radiusKm.toFixed(1)} km of your alert area).`;
+       ) <= $4`, [excludeUserId, latitude, longitude, radiusKm]);
+}
+async function fanOutNearbyNotification(params) {
+    const radiusKm = defaultRadiusKm();
+    const rows = await findUsersNearPoint({
+        latitude: params.latitude,
+        longitude: params.longitude,
+        excludeUserId: params.excludeUserId,
+        radiusKm,
+    });
     for (const row of rows) {
         try {
-            await notificationService.createNotification(row.id, types_1.NotificationType.CRIME_ALERT, 'New incident near your area', msg, { crimeId, latitude, longitude, radiusKm });
+            await notificationService.createNotification(row.id, params.type, params.title, params.message, { ...params.data, latitude: params.latitude, longitude: params.longitude, radiusKm });
         }
         catch (e) {
-            console.error('notifyUsersNearNewCrime: failed for user', row.id, e);
+            console.error('nearby notification fan-out failed for user', row.id, e);
         }
     }
+}
+/**
+ * Notify users who opted in with a saved alert location within `radiusKm` of the new incident.
+ * Skips the reporter. Uses Haversine distance in SQL (Postgres).
+ */
+async function notifyUsersNearNewCrime(params) {
+    const radiusKm = defaultRadiusKm();
+    const place = params.area?.trim() || 'Nearby';
+    await fanOutNearbyNotification({
+        latitude: params.latitude,
+        longitude: params.longitude,
+        excludeUserId: params.reporterUserId,
+        type: types_1.NotificationType.CRIME_ALERT,
+        title: 'New incident near your area',
+        message: `${params.title} — reported in ${place} (within ~${radiusKm.toFixed(1)} km of your alert area).`,
+        data: { crimeId: params.crimeId },
+    });
+}
+/** Notify nearby opted-in users when a live SOS is created. */
+async function notifyUsersNearNewSos(params) {
+    const radiusKm = defaultRadiusKm();
+    await fanOutNearbyNotification({
+        latitude: params.latitude,
+        longitude: params.longitude,
+        excludeUserId: params.senderUserId,
+        type: types_1.NotificationType.SOS_UPDATE,
+        title: 'Live SOS near your area',
+        message: `${params.message?.trim() || 'Emergency assistance requested'} (within ~${radiusKm.toFixed(1)} km of your alert area).`,
+        data: { sosId: params.sosId, liveLocation: true },
+    });
 }
 //# sourceMappingURL=nearby-alerts.js.map

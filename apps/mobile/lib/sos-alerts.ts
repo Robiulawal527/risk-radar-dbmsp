@@ -369,6 +369,10 @@ export async function fetchMySosAlertsFromSupabase(limit = 50): Promise<SOSReque
   }
 
   if (foundReadableTable) return normalizeSosList(rows, limit);
+  if (typeof (globalThis as any).__riskSupabaseSOSWarned === 'undefined') {
+    (globalThis as any).__riskSupabaseSOSWarned = true;
+    console.warn('[Risk Radar] Could not read any SOS table over Supabase (tables tried in fetchMy). Check RLS policies. Using empty list.');
+  }
   if (lastError instanceof Error) throw lastError;
   return [];
 }
@@ -401,6 +405,10 @@ export async function fetchActiveSosAlertsFromSupabase(limit = 200): Promise<SOS
   }
 
   if (foundReadableTable) return normalizeSosList(rows, limit, true);
+  if (typeof (globalThis as any).__riskSupabaseSOSWarned === 'undefined') {
+    (globalThis as any).__riskSupabaseSOSWarned = true;
+    console.warn('[Risk Radar] Could not read any SOS table over Supabase (tables tried in fetchActive). Check RLS SELECT policies on public.sos_* tables or similar. Using empty list.');
+  }
   if (lastError instanceof Error) throw lastError;
   return [];
 }

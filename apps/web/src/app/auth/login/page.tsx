@@ -162,7 +162,7 @@ function LoginInner() {
       if (axios.isAxiosError(err) && !err.response) {
         toast.error('Cannot reach the API', {
           description:
-            'Supabase sign-in worked, but /auth/me failed. From the repo root run pnpm backend (default http://127.0.0.1:3001). The web app proxies /api/backend to that server in dev.',
+            'Supabase sign-in worked, but /auth/me failed. From the repo root run "pnpm dev" (or "pnpm backend") — the web app proxies /api/backend to the local API (http://127.0.0.1:3001).',
         });
         return;
       }

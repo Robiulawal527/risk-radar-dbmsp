@@ -1,3 +1,28 @@
+import { config as dotenvConfig } from 'dotenv';
+import { resolve, dirname } from 'path';
+import { existsSync } from 'fs';
+import { fileURLToPath } from 'url';
+
+// When running `pnpm dev` (turbo) from the monorepo root, preload root .env* files
+// so NEXT_PUBLIC_* values defined at the root level are available even if
+// apps/web/.env.local is minimal or absent. Safe: does not override already-set vars.
+try {
+  const here = dirname(fileURLToPath(import.meta.url)); // apps/web
+  const root = resolve(here, '../../');
+  const files = [
+    '.env',
+    '.env.local',
+    `.env.${process.env.NODE_ENV || 'development'}`,
+    `.env.${process.env.NODE_ENV || 'development'}.local`,
+  ];
+  for (const f of files) {
+    const p = resolve(root, f);
+    if (existsSync(p)) dotenvConfig({ path: p, override: false });
+  }
+} catch {
+  // best effort only
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {

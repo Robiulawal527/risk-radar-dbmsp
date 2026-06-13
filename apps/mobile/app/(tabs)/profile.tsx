@@ -84,6 +84,20 @@ export default function ProfileScreen() {
           alertsEnabled,
         },
       });
+
+      // Also upsert to profiles table (the source of truth read by SupabaseAuthSync on hydration).
+      // This makes skills (and other fields) persist reliably when the custom /users/profile API
+      // is unavailable (404, network, dev setup without backend, etc).
+      try {
+        await supabase.from('profiles').upsert({
+          id: user.id,
+          full_name: name.trim() || null,
+          phone: normalizedPhone || null,
+          skills: skillsArr,
+          alerts_enabled: alertsEnabled,
+        });
+      } catch {}
+
       if (!error) {
         patchUser({ name: name.trim(), phone: normalizedPhone, skills: skillsArr, alertsEnabled });
         Alert.alert('Profile saved', 'Saved through your Supabase user metadata.');
@@ -96,6 +110,7 @@ export default function ProfileScreen() {
   };
 
   const saveAlertZoneFromGps = async () => {
+    if (!user) return;
     try {
       setGpsLoading(true);
       const notificationsAllowed = await requestNearbyNotificationPermission();
@@ -130,6 +145,17 @@ export default function ProfileScreen() {
         const { error } = await supabase.auth.updateUser({
           data: { alertLatitude: lat, alertLongitude: lng, alertsEnabled: true },
         });
+
+        // Also upsert to profiles so alert location persists for sync/hydration (profiles preferred over metadata).
+        try {
+          await supabase.from('profiles').upsert({
+            id: user.id,
+            alert_latitude: lat,
+            alert_longitude: lng,
+            alerts_enabled: true,
+          });
+        } catch {}
+
         if (!error) {
           patchUser({ alertLatitude: lat, alertLongitude: lng, alertsEnabled: true });
           setAlertsEnabled(true);

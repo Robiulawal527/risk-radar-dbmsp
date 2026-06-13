@@ -230,40 +230,112 @@ export async function getAreaRankings(): Promise<AreaRanking[]> {
 }
 
 export async function getCriminalRankings(): Promise<CriminalRanking[]> {
-  const criminals = await query<{
+  // Support both legacy backend table name and the public table created by Supabase migrations (006)
+  // Try camelCase first (older), then snake_case public table.
+  let criminals: Array<{
     name: string;
     age: number | null;
     gender: string | null;
     description: string;
-    knownAliases: unknown;
-    photoUrl: string | null;
+    knownAliases?: unknown;
+    known_aliases?: unknown;
+    photoUrl?: string | null;
+    photo_url?: string | null;
     status: string;
-    crimeCount: number;
-  }>(
-    `SELECT name, age, gender, description, "knownAliases", "photoUrl", status, "crimeCount"
-     FROM "CriminalRecord"
-     ORDER BY "crimeCount" DESC
-     LIMIT 50`
-  );
+    crimeCount?: number;
+    crime_count?: number;
+    intensity?: number;
+    score?: number;
+    most_frequent_crime?: string;
+    mostFrequentCrime?: string;
+  }> = [];
+  try {
+    criminals = await query(
+      `SELECT name, age, gender, description, "knownAliases", "photoUrl", status, "crimeCount", intensity, score, "mostFrequentCrime"
+       FROM "CriminalRecord"
+       ORDER BY "crimeCount" DESC
+       LIMIT 50`
+    );
+  } catch {
+    // ignore, try next table
+  }
+  if (!criminals || criminals.length === 0) {
+    try {
+      criminals = await query(
+        `SELECT name, age, gender, description, known_aliases, photo_url, status, crime_count, intensity, score, most_frequent_crime
+         FROM criminal_records
+         ORDER BY COALESCE(score, crime_count * COALESCE(intensity, 1) * 10) DESC
+         LIMIT 50`
+      );
+    } catch {
+      // final fallback: empty
+      criminals = [];
+    }
+  }
 
-  return criminals.map((criminal, index) => ({
-    rank: index + 1,
-    criminalInfo: {
-      name: criminal.name,
-      age: criminal.age ?? undefined,
-      gender: criminal.gender ?? undefined,
-      description: criminal.description,
-      knownAliases: criminal.knownAliases as string[],
-      photoUrl: criminal.photoUrl ?? undefined,
-      status: criminal.status,
-    },
-    crimeCount: criminal.crimeCount,
-    mostFrequentCrime: CrimeType.THEFT,
-    dangerLevel: calculateRiskLevel(criminal.crimeCount),
-  }));
+  return (criminals || []).map((criminal, index) => {
+    const crimeCount = Number(criminal.crimeCount ?? criminal.crime_count ?? 0);
+    const score = Number(criminal.score ?? crimeCount * (Number(criminal.intensity) || 1) * 10);
+    const aliases = (criminal.knownAliases ?? criminal.known_aliases ?? []) as string[];
+    const photo = criminal.photoUrl ?? criminal.photo_url ?? undefined;
+    const mfc = (criminal.mostFrequentCrime ?? criminal.most_frequent_crime ?? 'OTHER') as string;
+    return {
+      rank: index + 1,
+      criminalInfo: {
+        name: criminal.name,
+        age: criminal.age ?? undefined,
+        gender: criminal.gender ?? undefined,
+        description: criminal.description,
+        knownAliases: Array.isArray(aliases) ? aliases : [],
+        photoUrl: photo ?? undefined,
+        status: criminal.status || 'UNDER_REVIEW',
+      },
+      crimeCount,
+      mostFrequentCrime: (Object.values(CrimeType) as string[]).includes(mfc) ? (mfc as CrimeType) : CrimeType.OTHER,
+      dangerLevel: calculateRiskLevel(crimeCount),
+    };
+  });
 }
 
 export async function getPhilanthropistRankings(): Promise<PhilanthropistRanking[]> {
+  // Prefer dedicated volunteers table (from Supabase migration 006 / admin management) if it has rows.
+  let volunteers: Array<{
+    id?: string;
+    name: string;
+    avatar?: string | null;
+    activity_count?: number;
+    activityCount?: number;
+    intensity?: number;
+    score?: number;
+  }> = [];
+  try {
+    volunteers = await query(
+      `SELECT id, name, avatar, activity_count, intensity, score
+       FROM volunteers
+       ORDER BY COALESCE(score, activity_count * COALESCE(intensity, 1) * 10) DESC
+       LIMIT 50`
+    );
+  } catch {
+    // ignore
+  }
+  if (volunteers && volunteers.length > 0) {
+    return volunteers.map((v, index) => {
+      const activity = Number(v.activity_count ?? v.activityCount ?? 0);
+      const intensity = Number(v.intensity ?? 1);
+      const score = Number(v.score ?? activity * intensity * 10);
+      return {
+        rank: index + 1,
+        userId: v.id || `vol-${index}`,
+        name: v.name || 'Volunteer',
+        avatar: v.avatar ?? undefined,
+        reportsSubmitted: activity,
+        accuracy: Math.min(1, Math.max(0, intensity / 10)),
+        contribution: Math.round(score),
+      };
+    });
+  }
+
+  // Fallback: rank users by number of submitted crimes (proxy for top contributors/reporters).
   const users = await query<{ id: string; name: string; avatar: string | null; cnt: string }>(
     `SELECT u.id, u.name, u.avatar, COUNT(c.id)::text AS cnt
      FROM "User" u

@@ -1,5 +1,6 @@
 import { CrimeType, Severity, type Crime, type CrimeStats } from '@risk-radar/types';
-import { supabase, isSupabaseConfigured } from './supabase';
+import { supabase, supabaseWithAccessToken, isSupabaseConfigured } from './supabase';
+import { useAuthStore } from '@/store/auth';
 
 function configuredTableCandidates(): string[] {
   const raw = process.env.EXPO_PUBLIC_SUPABASE_CRIME_TABLE?.trim();
@@ -18,12 +19,29 @@ function configuredTableCandidates(): string[] {
   });
 }
 
+function getBestCrimeClient() {
+  const token = useAuthStore.getState().accessToken;
+  if (token) {
+    try {
+      return supabaseWithAccessToken(token);
+    } catch {}
+  }
+  return supabase;
+}
+
 async function detectReadableCrimeTable(): Promise<string> {
+  const client = getBestCrimeClient();
   const tried: string[] = [];
   for (const name of configuredTableCandidates()) {
     tried.push(name);
-    const { error } = await supabase.from(name).select('*').limit(1);
+    const { error } = await client.from(name).select('*').limit(1);
     if (!error) return name;
+  }
+  // One-time hint for developers: common cause of "no supabase data" is RLS policies (need SELECT for anon or authenticated on public.crimes etc)
+  // or the table using a different name (use EXPO_PUBLIC_SUPABASE_CRIME_TABLE=...).
+  if (typeof (globalThis as any).__riskSupabaseCrimeWarned === 'undefined') {
+    (globalThis as any).__riskSupabaseCrimeWarned = true;
+    console.warn('[Risk Radar] Could not read any crime table over Supabase (tried: ' + tried.join(', ') + '). Check RLS policies, table names, or EXPO_PUBLIC_SUPABASE_CRIME_TABLE. Will try API fallback.');
   }
   throw new Error(`No readable crime table found. Tried: ${tried.join(', ')}`);
 }
@@ -101,9 +119,10 @@ export function mapCrimeRowLoose(row: Record<string, unknown>): Crime | null {
 }
 
 async function fetchRowsOrdered(table: string, limit: number): Promise<Record<string, unknown>[]> {
+  const client = getBestCrimeClient();
   const orderAttempts = ['created_at', 'createdAt', 'date_time', 'dateTime', 'updated_at', 'updatedAt'];
   const withGeoNullFilter = () =>
-    supabase.from(table).select('*').not('latitude', 'is', null).not('longitude', 'is', null);
+    client.from(table).select('*').not('latitude', 'is', null).not('longitude', 'is', null);
 
   for (const col of orderAttempts) {
     const { data, error } = await withGeoNullFilter().order(col, { ascending: false }).limit(limit);
@@ -114,11 +133,11 @@ async function fetchRowsOrdered(table: string, limit: number): Promise<Record<st
   if (!filteredError && filteredData) return filteredData as Record<string, unknown>[];
 
   for (const col of orderAttempts) {
-    const { data, error } = await supabase.from(table).select('*').order(col, { ascending: false }).limit(limit);
+    const { data, error } = await client.from(table).select('*').order(col, { ascending: false }).limit(limit);
     if (!error && data) return data as Record<string, unknown>[];
   }
 
-  const { data, error } = await supabase.from(table).select('*').limit(limit);
+  const { data, error } = await client.from(table).select('*').limit(limit);
   if (error) throw new Error(error.message);
   return (data ?? []) as Record<string, unknown>[];
 }

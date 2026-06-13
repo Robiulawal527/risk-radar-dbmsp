@@ -130,15 +130,32 @@ export default function MapPage() {
     if (!isSupabaseConfigured()) return;
     const supabase = getSupabaseBrowserClient();
     if (!supabase) return;
-    const channel = supabase
-      .channel('web-live-map')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'crimes' }, () => {
+
+    // Respect NEXT_PUBLIC_SUPABASE_CRIME_TABLE for realtime in addition to the common names.
+    // This way if the user set a custom table name it still gets live updates.
+    const envCrimeTables = (process.env.NEXT_PUBLIC_SUPABASE_CRIME_TABLE || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const crimeTables = Array.from(new Set([...envCrimeTables, 'crimes', 'crime', 'Crime']));
+    const sosTables = ['sos_alerts', 'sos', 'SOSRequest'];
+
+    const channel = supabase.channel('web-live-map');
+
+    for (const t of crimeTables) {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table: t }, () => {
         void refetch();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sos_alerts' }, () => {
+      });
+    }
+    for (const t of sosTables) {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table: t }, () => {
         void refetchSos();
-      })
-      .subscribe();
+      });
+    }
+
+    channel.subscribe();
+
     return () => {
       void supabase.removeChannel(channel);
     };

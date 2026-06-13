@@ -25,10 +25,11 @@ export function NearbySafetyNotifications() {
   }, [isAuthenticated]);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     return addNearbyNotificationResponseListener(() => {
       router.push('/(tabs)/map' as never);
     });
-  }, []);
+  }, [isAuthenticated]);
 
   return null;
 }

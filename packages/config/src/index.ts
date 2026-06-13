@@ -1,6 +1,70 @@
 import { config as dotenvConfig } from 'dotenv';
+import path from 'path';
+import { existsSync } from 'fs';
 
-dotenvConfig();
+const NODE_ENV = process.env.NODE_ENV || 'development';
+
+/**
+ * Find the monorepo root by walking up from this package (works for both src/ and dist/ layouts
+ * and when the process cwd is the package dir during `turbo run` or `pnpm dev` from root).
+ */
+function getMonorepoRoot(): string {
+  let current = __dirname;
+  for (let i = 0; i < 6; i += 1) {
+    const parent = path.resolve(current, '..');
+    if (
+      existsSync(path.join(parent, 'pnpm-workspace.yaml')) ||
+      existsSync(path.join(parent, 'turbo.json')) ||
+      existsSync(path.join(parent, 'package.json'))
+    ) {
+      // Heuristic: if this parent has the workspace marker or is the top package.json of monorepo
+      if (existsSync(path.join(parent, 'pnpm-workspace.yaml')) || existsSync(path.join(parent, 'turbo.json'))) {
+        return parent;
+      }
+      // Fallback: keep walking one more if only saw a package.json
+    }
+    current = parent;
+    if (!path.basename(current) || path.basename(current) === path.basename(parent)) break;
+  }
+  // Safe fallback: packages/config -> ../../..
+  return path.resolve(__dirname, '../../..');
+}
+
+function loadEnvFile(filePath: string) {
+  if (existsSync(filePath)) {
+    // Do not override vars that are already set in the environment (e.g. platform-provided in prod,
+    // or earlier loads). .env.local and later files take precedence within our explicit loads.
+    dotenvConfig({ path: filePath, override: false });
+  }
+}
+
+function loadEnvsFrom(dir: string) {
+  // Conventional precedence similar to Next.js / dotenv conventions
+  loadEnvFile(path.join(dir, '.env'));
+  loadEnvFile(path.join(dir, '.env.local'));
+  if (NODE_ENV) {
+    loadEnvFile(path.join(dir, `.env.${NODE_ENV}`));
+    loadEnvFile(path.join(dir, `.env.${NODE_ENV}.local`));
+  }
+}
+
+function loadAllEnvs() {
+  const root = getMonorepoRoot();
+  loadEnvsFrom(root);
+
+  const cwd = process.cwd();
+  if (path.resolve(cwd) !== path.resolve(root)) {
+    loadEnvsFrom(cwd);
+  }
+
+  // Final pass: honor any .env sitting directly for the current process cwd (original behavior)
+  dotenvConfig({ override: false });
+}
+
+// Load environment variables from monorepo root (and cwd) so that `pnpm dev` (turbo) from the
+// repository root correctly supplies BACKEND secrets (SUPABASE_*, JWT_*, DATABASE_URL, etc.)
+// to the backend package even though its cwd during turbo execution is packages/backend/.
+loadAllEnvs();
 
 /** True when running on a hosted platform where secrets must be set (not local `pnpm dev`). */
 function isCloudRuntime(): boolean {

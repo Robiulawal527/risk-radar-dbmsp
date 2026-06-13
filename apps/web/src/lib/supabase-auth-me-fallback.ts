@@ -13,7 +13,7 @@ export async function supabaseAuthMeFallback(authorization: string): Promise<Nex
       {
         success: false,
         error:
-          'Backend is not running and Supabase env is missing. Set NEXT_PUBLIC_SUPABASE_URL + anon/publishable key, or start the API (pnpm backend from repo root).',
+          'Backend is not running and Supabase env is missing. Set NEXT_PUBLIC_SUPABASE_URL + anon/publishable key, or start the API ("pnpm dev" or "pnpm backend" from repo root).',
       },
       { status: 503 }
     );

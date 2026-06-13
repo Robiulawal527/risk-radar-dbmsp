@@ -18,6 +18,7 @@
     "web": "turbo run dev --filter=@risk-radar/web",
     "mobile": "turbo run dev --filter=@risk-radar/mobile",
     "backend": "turbo run dev --filter=@risk-radar/backend",
+    "env:sync": "node scripts/sync-env.js",
     "docker:web-mobile": "docker compose --env-file .env.docker up --build web mobile",
     "docker:full": "docker compose --env-file .env.docker --profile backend up --build",
     "docker:down": "docker compose --env-file .env.docker --profile backend down",

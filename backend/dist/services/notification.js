@@ -13,8 +13,11 @@ async function getUserNotifications(userId) {
      LIMIT 50`, [userId]);
     return notifications;
 }
-async function markAsRead(id) {
-    await (0, database_1.query)(`UPDATE "Notification" SET "read" = true WHERE id = $1`, [id]);
+async function markAsRead(id, userId) {
+    await (0, database_1.query)(`UPDATE "Notification" SET "read" = true WHERE id = $1 AND "userId" = $2`, [
+        id,
+        userId,
+    ]);
 }
 async function markAllAsRead(userId) {
     await (0, database_1.query)(`UPDATE "Notification" SET "read" = true WHERE "userId" = $1 AND "read" = false`, [

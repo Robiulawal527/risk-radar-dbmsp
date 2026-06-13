@@ -1,4 +1,12 @@
-import { CrimeType, Severity, SOSStatus, type Crime, type SOSRequest } from '@risk-radar/types';
+import {
+  CrimeType,
+  Severity,
+  SOSStatus,
+  type Crime,
+  type CriminalRanking,
+  type PhilanthropistRanking,
+  type SOSRequest,
+} from '@risk-radar/types';
 import { mapCrimeRowLoose } from './map-crimes';
 import { mapSosAlertRow, SOS_ALERT_TABLES } from './sos-alerts';
 import { isSupabaseConfigured, supabaseWithAccessToken } from './supabase';
@@ -521,4 +529,115 @@ export function crimeToAdminInput(crime: Crime): AdminCrimeInput {
     reportedBy: crime.reportedBy,
     dateTime: new Date(crime.dateTime).toISOString(),
   };
+}
+
+function asSeverityFromScore(score: number): Severity {
+  if (score >= 450) return Severity.CRITICAL;
+  if (score >= 240) return Severity.HIGH;
+  if (score >= 90) return Severity.MEDIUM;
+  return Severity.LOW;
+}
+
+export function buildCriminalRankings(rows: AdminCriminalRecord[]): CriminalRanking[] {
+  return rows
+    .slice()
+    .sort((a, b) => b.score - a.score)
+    .map((row, index) => ({
+      rank: index + 1,
+      criminalInfo: {
+        name: row.name,
+        age: row.age ?? undefined,
+        gender: row.gender ?? undefined,
+        description: row.description,
+        knownAliases: row.knownAliases,
+        photoUrl: row.photoUrl ?? undefined,
+        status: row.status,
+      },
+      crimeCount: row.crimeCount,
+      mostFrequentCrime: row.mostFrequentCrime,
+      dangerLevel: asSeverityFromScore(row.score),
+    }));
+}
+
+export function buildVolunteerRankings(rows: AdminVolunteer[]): PhilanthropistRanking[] {
+  return rows
+    .slice()
+    .sort((a, b) => b.score - a.score)
+    .map((row, index) => ({
+      rank: index + 1,
+      userId: row.id,
+      name: row.name,
+      avatar: row.avatar ?? undefined,
+      reportsSubmitted: row.activityCount,
+      accuracy: Math.min(1, Math.max(0, row.intensity / 10)),
+      contribution: Math.round(row.score),
+    }));
+}
+
+const DEMO_CRIMINALS: Omit<CriminalRecordInput, 'id'>[] = [
+  {
+    name: 'Rahim "The Shadow" Khan',
+    description: 'Suspect in multiple armed robberies and vehicle thefts across Dhaka metro area. Known for targeting evening commuters.',
+    knownAliases: ['Shadow', 'R.K.'],
+    status: 'WANTED',
+    crimeCount: 14,
+    intensity: 9,
+    mostFrequentCrime: CrimeType.ROBBERY,
+  },
+  {
+    name: 'Ayesha Begum',
+    description: 'Organized fraud and identity theft ring operating in university areas. Multiple victims reported phishing and document forgery.',
+    knownAliases: ['A.B.', 'The Forger'],
+    status: 'ARRESTED',
+    crimeCount: 9,
+    intensity: 6,
+    mostFrequentCrime: CrimeType.FRAUD,
+  },
+  {
+    name: 'Local Gang - Block B',
+    description: 'Group involved in recurring assaults, drug distribution and extortion in residential blocks. High community impact.',
+    knownAliases: ['Block B Crew'],
+    status: 'UNDER_REVIEW',
+    crimeCount: 23,
+    intensity: 8,
+    mostFrequentCrime: CrimeType.ASSAULT,
+  },
+];
+
+const DEMO_VOLUNTEERS: Omit<VolunteerInput, 'id'>[] = [
+  { name: 'Dr. Nafisa Rahman', email: 'nafisa@local.org', phone: '01711-223344', skills: ['doctor', 'first aid'], status: 'ACTIVE', activityCount: 28, intensity: 9 },
+  { name: 'Karim Uddin', email: 'karim.v@help.bd', skills: ['engineer', 'rescue'], status: 'ACTIVE', activityCount: 19, intensity: 7 },
+  { name: 'Sadia Islam', email: 'sadia@community.net', phone: '01922-556677', skills: ['counselor', 'legal aid'], status: 'ACTIVE', activityCount: 33, intensity: 8 },
+];
+
+export async function seedDemoCriminalRecords(): Promise<number> {
+  const client = getClient();
+  const table = await detectReadableTable(CRIMINAL_TABLES);
+  let inserted = 0;
+  for (const demo of DEMO_CRIMINALS) {
+    try {
+      const payload = criminalPayload(table, demo);
+      const { error } = await client.from(table).insert(payload as never);
+      if (!error) inserted++;
+    } catch {
+      // continue
+    }
+  }
+  return inserted;
+}
+
+export async function seedDemoVolunteers(): Promise<number> {
+  const client = getClient();
+  const table = await detectReadableTable(VOLUNTEER_TABLES);
+  let inserted = 0;
+  for (const demo of DEMO_VOLUNTEERS) {
+    try {
+      const payload = volunteerPayload(demo);
+      const { error } = await client.from(table).insert(payload as never);
+      if (!error) inserted++;
+    } catch {
+      // continue
+    }
+  }
+  return inserted;
 }

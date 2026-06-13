@@ -18,7 +18,11 @@ type NotifRow = {
 };
 
 const SEEN_STORAGE_KEY = 'risk-radar:web-nearby-notifications';
-const CRIME_TABLES = ['crimes', 'Crime', 'crime', 'incidents'] as const;
+const envCrime = (process.env.NEXT_PUBLIC_SUPABASE_CRIME_TABLE || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+const CRIME_TABLES: readonly string[] = Array.from(new Set([...envCrime, 'crimes', 'Crime', 'crime', 'incidents']));
 
 function getString(row: Record<string, unknown>, ...keys: string[]) {
   for (const key of keys) {
