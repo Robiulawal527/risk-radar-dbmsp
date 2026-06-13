@@ -134,7 +134,7 @@ export default function LoginScreen() {
           </Link>
         </View>
 
-        <Text style={styles.demoNote}>Demo: demo@riskradar.local / demo123</Text>
+      //<Text style={styles.demoNote}>Demo: demo@riskradar.local / demo123</Text>
       </View>
     </KeyboardAvoidingView>
   );
