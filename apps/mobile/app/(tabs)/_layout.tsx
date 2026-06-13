@@ -1,21 +1,19 @@
 import { Tabs } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Redirect } from 'expo-router';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { useAuthHydration } from '@/hooks/useAuthHydration';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { useAuthReady } from '@/hooks/useAuthHydration';
 import { useAuthStore } from '@/store/auth';
-import { UserRole } from '@risk-radar/types';
 
 export default function TabLayout() {
-  const hydrated = useAuthHydration();
+  const ready = useAuthReady();
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const userRole = useAuthStore((state) => state.user?.role);
-  const isAdmin = String(userRole ?? '').toUpperCase() === UserRole.ADMIN;
 
-  if (!hydrated) {
+  if (!ready) {
     return (
       <View style={styles.boot}>
         <ActivityIndicator size="large" color="#22d3ee" />
+        <Text style={styles.bootLabel}>Loading your dashboard…</Text>
       </View>
     );
   }
@@ -90,16 +88,6 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="admin"
-        options={{
-          title: 'Admin',
-          href: isAdmin ? undefined : null,
-          tabBarIcon: ({ color }) => (
-            <MaterialIcons name="admin-panel-settings" size={24} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="sos"
         options={{
           title: 'SOS',
@@ -124,5 +112,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#020617',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  bootLabel: {
+    marginTop: 12,
+    color: '#64748b',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

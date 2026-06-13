@@ -230,7 +230,7 @@ async function putFallbackProfile(req: NextRequest) {
 
   const { data, error } = await supabase
     .from('profiles')
-    .insert(update)
+    .upsert(update, { onConflict: 'id' })
     .select(
       'id, email, full_name, phone, avatar, role, skills, alert_latitude, alert_longitude, alerts_enabled, created_at, updated_at'
     )

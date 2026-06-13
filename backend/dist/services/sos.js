@@ -9,6 +9,7 @@ const database_1 = require("@risk-radar/database");
 const types_1 = require("@risk-radar/types");
 const http_error_js_1 = require("../lib/http-error.js");
 const nearby_alerts_js_1 = require("./nearby-alerts.js");
+const cache_js_1 = require("../lib/cache.js");
 /** Converts the database SOS row into the shared API shape used by mobile and web clients. */
 function formatSOSRequest(request) {
     return {
@@ -51,6 +52,8 @@ async function createSOSRequest(userId, location, message) {
     ]);
     if (!sosRequest)
         throw new http_error_js_1.HttpError(500, 'Failed to create SOS');
+    // Invalidate any caches that might include live SOS counts (defensive for 50 user target)
+    (0, cache_js_1.invalidatePrefix)('analytics:');
     void (0, nearby_alerts_js_1.notifyUsersNearNewSos)({
         sosId: sosRequest.id,
         latitude: sosRequest.latitude,

@@ -2,6 +2,7 @@ import express, { type Express } from 'express';
 import cors from 'cors';
 import { Router } from 'express';
 import { HttpError } from './lib/http-error.js';
+import { applyRateLimiters } from './lib/rate-limit.js';
 import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
 import { crimesRouter } from './routes/crimes.js';
@@ -66,6 +67,11 @@ export function createApp(): Express {
   );
 
   const api = Router();
+
+  // Apply rate limiters early (before mounting sub-routers)
+  // This protects the backend + database pool for a 50 concurrent user target.
+  applyRateLimiters(app, api);
+
   api.use('/health', healthRouter);
   api.use('/auth', authRouter);
   api.use('/crimes', crimesRouter);

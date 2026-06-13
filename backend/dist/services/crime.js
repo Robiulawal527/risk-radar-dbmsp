@@ -11,6 +11,7 @@ const database_1 = require("@risk-radar/database");
 const http_error_js_1 = require("../lib/http-error.js");
 const validation_js_1 = require("../lib/validation.js");
 const nearby_alerts_js_1 = require("./nearby-alerts.js");
+const cache_js_1 = require("../lib/cache.js");
 function buildListWhere(params) {
     const parts = ['c.latitude IS NOT NULL', 'c.longitude IS NOT NULL'];
     const values = [];
@@ -154,6 +155,9 @@ async function create(data, userId) {
     ]);
     if (!crime)
         throw new http_error_js_1.HttpError(500, 'Failed to create crime');
+    // Invalidate cached public data so the community sees fresh stats/heatmap/rankings soon.
+    (0, cache_js_1.invalidatePrefix)('analytics:');
+    (0, cache_js_1.invalidatePrefix)('heatmap:');
     void (0, nearby_alerts_js_1.notifyUsersNearNewCrime)({
         crimeId: crime.id,
         latitude: crime.latitude,

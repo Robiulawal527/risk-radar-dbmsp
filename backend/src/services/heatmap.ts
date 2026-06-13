@@ -1,7 +1,14 @@
 import { query } from '@risk-radar/database';
 import { Severity, type HeatmapFilter, type HeatmapPoint } from '@risk-radar/types';
+import { cached, CACHE_TTL } from '../lib/cache.js';
 
 export async function getHeatmapData(filter?: HeatmapFilter): Promise<HeatmapPoint[]> {
+  // Heatmap is expensive without good filters. Cache per-filter signature for short time.
+  const cacheKey = `heatmap:${JSON.stringify(filter || {})}`;
+
+  return cached(
+    cacheKey,
+    async () => {
   const parts = ['latitude IS NOT NULL', 'longitude IS NOT NULL'];
   const params: unknown[] = [];
   let n = 1;
@@ -36,24 +43,29 @@ export async function getHeatmapData(filter?: HeatmapFilter): Promise<HeatmapPoi
 
   const where = `WHERE ${parts.join(' AND ')}`;
 
+  // Hard safety limit to protect against very broad queries when 50 users are active
+  const limitClause = 'LIMIT 5000';
   const crimes = await query<{ latitude: number; longitude: number; severity: string }>(
-    `SELECT latitude, longitude, severity FROM "Crime" ${where}`,
+    `SELECT latitude, longitude, severity FROM "Crime" ${where} ${limitClause}`,
     params
   );
 
-  return crimes
-    .filter(
-      (c) =>
-        typeof c.latitude === 'number' &&
-        typeof c.longitude === 'number' &&
-        !Number.isNaN(c.latitude) &&
-        !Number.isNaN(c.longitude)
-    )
-    .map((crime) => ({
-      latitude: crime.latitude,
-      longitude: crime.longitude,
-      intensity: calculateIntensity(crime.severity as Severity),
-    }));
+    return crimes
+      .filter(
+        (c) =>
+          typeof c.latitude === 'number' &&
+          typeof c.longitude === 'number' &&
+          !Number.isNaN(c.latitude) &&
+          !Number.isNaN(c.longitude)
+      )
+      .map((crime) => ({
+        latitude: crime.latitude,
+        longitude: crime.longitude,
+        intensity: calculateIntensity(crime.severity as Severity),
+      }));
+  },
+    { ttlMs: CACHE_TTL.HEATMAP }
+  );
 }
 
 function calculateIntensity(severity: Severity): number {

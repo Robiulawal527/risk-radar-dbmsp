@@ -7,6 +7,7 @@ import {
   normalizeRequiredText,
 } from '../lib/validation.js';
 import { notifyUsersNearNewCrime } from './nearby-alerts.js';
+import { invalidatePrefix } from '../lib/cache.js';
 
 type CrimeRow = {
   id: string;
@@ -217,6 +218,10 @@ export async function create(data: Partial<Crime>, userId: string): Promise<Crim
   );
 
   if (!crime) throw new HttpError(500, 'Failed to create crime');
+
+  // Invalidate cached public data so the community sees fresh stats/heatmap/rankings soon.
+  invalidatePrefix('analytics:');
+  invalidatePrefix('heatmap:');
 
   void notifyUsersNearNewCrime({
     crimeId: crime.id,

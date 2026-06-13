@@ -26,15 +26,39 @@ async function main() {
   });
 
   io.on('connection', (socket) => {
+    // Clients can optionally join a room for their current area/district to reduce noise for 50+ users.
+    // Example from client: socket.emit('join-area', { area: 'Dhanmondi' });
+    socket.on('join-area', (payload: { area?: string; district?: string }) => {
+      const room = payload.area || payload.district;
+      if (room) {
+        socket.join(room);
+      }
+      // Also keep a general room
+      socket.join('global');
+    });
+
     socket.on(
       'sos:create',
       async (
-        data: { userId: string; location: Parameters<typeof sosService.createSOSRequest>[1]; message?: string },
+        data: {
+          userId: string;
+          location: Parameters<typeof sosService.createSOSRequest>[1];
+          message?: string;
+        },
         callback?: (r: unknown) => void
       ) => {
         try {
           const sosRequest = await sosService.createSOSRequest(data.userId, data.location, data.message);
+
+          // Broadcast to everyone (backwards compatible) + targeted room if we have area info
           io.emit('sos:alert', sosRequest);
+
+          const area = (sosRequest as any)?.location?.area || (sosRequest as any)?.area;
+          const district = (sosRequest as any)?.location?.district;
+          if (area) io.to(area).emit('sos:alert', sosRequest);
+          if (district) io.to(district).emit('sos:alert', sosRequest);
+          io.to('global').emit('sos:alert', sosRequest);
+
           callback?.({ success: true, data: sosRequest });
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : 'Unknown error';
@@ -49,6 +73,12 @@ async function main() {
         try {
           const sosRequest = await sosService.updateSOSStatus(data.id, data.userId, data.status);
           io.emit('sos:updated', sosRequest);
+
+          const area = (sosRequest as any)?.location?.area;
+          const district = (sosRequest as any)?.location?.district;
+          if (area) io.to(area).emit('sos:updated', sosRequest);
+          if (district) io.to(district).emit('sos:updated', sosRequest);
+
           callback?.({ success: true, data: sosRequest });
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : 'Unknown error';

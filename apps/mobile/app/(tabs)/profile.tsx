@@ -89,13 +89,18 @@ export default function ProfileScreen() {
       // This makes skills (and other fields) persist reliably when the custom /users/profile API
       // is unavailable (404, network, dev setup without backend, etc).
       try {
-        await supabase.from('profiles').upsert({
-          id: user.id,
-          full_name: name.trim() || null,
-          phone: normalizedPhone || null,
-          skills: skillsArr,
-          alerts_enabled: alertsEnabled,
-        });
+        await supabase.from('profiles').upsert(
+          {
+            id: user.id,
+            email: user.email,
+            full_name: name.trim() || null,
+            phone: normalizedPhone || null,
+            avatar: user.avatar || null,
+            skills: skillsArr,
+            alerts_enabled: alertsEnabled,
+          },
+          { onConflict: 'id' }
+        );
       } catch {}
 
       if (!error) {
@@ -147,13 +152,22 @@ export default function ProfileScreen() {
         });
 
         // Also upsert to profiles so alert location persists for sync/hydration (profiles preferred over metadata).
+        // Include full profile fields so we do not clobber name/skills/avatar etc on the view trigger.
         try {
-          await supabase.from('profiles').upsert({
-            id: user.id,
-            alert_latitude: lat,
-            alert_longitude: lng,
-            alerts_enabled: true,
-          });
+          await supabase.from('profiles').upsert(
+            {
+              id: user.id,
+              email: user.email,
+              full_name: user.name || null,
+              phone: user.phone || null,
+              avatar: user.avatar || null,
+              skills: user.skills || [],
+              alert_latitude: lat,
+              alert_longitude: lng,
+              alerts_enabled: true,
+            },
+            { onConflict: 'id' }
+          );
         } catch {}
 
         if (!error) {
@@ -210,8 +224,20 @@ export default function ProfileScreen() {
         <Text style={styles.label}>PHONE NUMBER</Text>
         <TextInput style={styles.input} value={phone} onChangeText={setPhone} placeholder="+880..." placeholderTextColor={COLORS.textMuted} keyboardType="phone-pad" />
         <Text style={styles.label}>SKILLS</Text>
-        <TextInput style={styles.input} value={skills} onChangeText={setSkills} placeholder="doctor, engineer, volunteer" placeholderTextColor={COLORS.textMuted} />
-        <Text style={styles.helpText}>Comma-separated skills power Social Radar search.</Text>
+        <TextInput style={styles.input} value={skills} onChangeText={setSkills} placeholder="doctor, engineer, volunteer, rescue" placeholderTextColor={COLORS.textMuted} />
+        <Text style={styles.helpText}>Comma-separated skills power Social Radar search on the Community tab.</Text>
+        {parseSkills(skills).length > 0 ? (
+          <View style={styles.skillsPreview}>
+            <Text style={styles.skillsPreviewLabel}>Your skills:</Text>
+            <View style={styles.previewTags}>
+              {parseSkills(skills).map((skill, index) => (
+                <View key={index} style={styles.previewChip}>
+                  <Text style={styles.previewChipText}>{skill}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
         <View style={styles.switchRow}>
           <View style={styles.switchTextWrap}>
             <Text style={styles.switchTitle}>Nearby incident notifications</Text>
@@ -280,4 +306,16 @@ const styles = StyleSheet.create({
   savedLocation: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.md },
   logoutButton: { backgroundColor: COLORS.danger, borderRadius: RADIUS.sm, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
   logoutText: { color: '#fff', fontSize: 15, fontWeight: '900' },
+  skillsPreview: { marginTop: SPACING.sm },
+  skillsPreviewLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', marginBottom: 4 },
+  previewTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  previewChip: {
+    backgroundColor: 'rgba(0, 229, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 229, 255, 0.3)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: RADIUS.full,
+  },
+  previewChipText: { color: COLORS.accent, fontSize: 12, fontWeight: '700' },
 });

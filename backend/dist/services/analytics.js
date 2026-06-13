@@ -7,6 +7,7 @@ exports.getCriminalRankings = getCriminalRankings;
 exports.getPhilanthropistRankings = getPhilanthropistRankings;
 const database_1 = require("@risk-radar/database");
 const types_1 = require("@risk-radar/types");
+const cache_js_1 = require("../lib/cache.js");
 async function getSocialRadarMatches(currentUserId, wantedInterests, wantedSkills) {
     const rows = await (0, database_1.query)(`SELECT u.id, u.name, u.email, u.avatar, u.phone, u.skills,
       COALESCE((SELECT COUNT(*)::int FROM "Crime" c WHERE c."userId" = u.id), 0) AS crime_n,
@@ -71,21 +72,23 @@ async function getSocialRadarMatches(currentUserId, wantedInterests, wantedSkill
         .slice(0, 20);
 }
 async function getCrimeStats() {
-    const totalRow = await (0, database_1.queryOne)(`SELECT COUNT(*)::text AS n FROM "Crime"`);
-    const totalCrimes = Number(totalRow?.n || 0);
-    const [crimesByType, crimesBySeverity, crimesByArea] = await Promise.all([
-        getCrimesByType(),
-        getCrimesBySeverity(),
-        getCrimesByArea(),
-    ]);
-    const trends = await getTrends();
-    return {
-        totalCrimes,
-        crimesByType,
-        crimesBySeverity,
-        crimesByArea,
-        trends,
-    };
+    return (0, cache_js_1.cached)('analytics:stats', async () => {
+        const totalRow = await (0, database_1.queryOne)(`SELECT COUNT(*)::text AS n FROM "Crime"`);
+        const totalCrimes = Number(totalRow?.n || 0);
+        const [crimesByType, crimesBySeverity, crimesByArea] = await Promise.all([
+            getCrimesByType(),
+            getCrimesBySeverity(),
+            getCrimesByArea(),
+        ]);
+        const trends = await getTrends();
+        return {
+            totalCrimes,
+            crimesByType,
+            crimesBySeverity,
+            crimesByArea,
+            trends,
+        };
+    }, { ttlMs: cache_js_1.CACHE_TTL.STATS_AND_RANKINGS });
 }
 async function getCrimesByType() {
     const results = await (0, database_1.query)(`SELECT type, COUNT(*)::text AS c FROM "Crime" GROUP BY type`);
@@ -149,59 +152,120 @@ async function getTrends() {
     }));
 }
 async function getAreaRankings() {
-    const results = await (0, database_1.query)(`SELECT area, district, COUNT(*)::text AS cnt
-     FROM "Crime"
-     WHERE area IS NOT NULL
-     GROUP BY area, district
-     ORDER BY COUNT(*) DESC
-     LIMIT 50`);
-    return results.map((r, index) => ({
-        rank: index + 1,
-        area: r.area,
-        district: r.district ?? '',
-        crimeCount: Number(r.cnt),
-        riskLevel: calculateRiskLevel(Number(r.cnt)),
-        crimeTypes: Object.values(types_1.CrimeType).reduce((acc, t) => ({ ...acc, [t]: 0 }), {}),
-        trend: 'STABLE',
-    }));
+    return (0, cache_js_1.cached)('analytics:area-rankings', async () => {
+        const results = await (0, database_1.query)(`SELECT area, district, COUNT(*)::text AS cnt
+         FROM "Crime"
+         WHERE area IS NOT NULL
+         GROUP BY area, district
+         ORDER BY COUNT(*) DESC
+         LIMIT 50`);
+        return results.map((r, index) => ({
+            rank: index + 1,
+            area: r.area,
+            district: r.district ?? '',
+            crimeCount: Number(r.cnt),
+            riskLevel: calculateRiskLevel(Number(r.cnt)),
+            crimeTypes: Object.values(types_1.CrimeType).reduce((acc, t) => ({ ...acc, [t]: 0 }), {}),
+            trend: 'STABLE',
+        }));
+    }, { ttlMs: cache_js_1.CACHE_TTL.STATS_AND_RANKINGS });
 }
 async function getCriminalRankings() {
-    const criminals = await (0, database_1.query)(`SELECT name, age, gender, description, "knownAliases", "photoUrl", status, "crimeCount"
-     FROM "CriminalRecord"
-     ORDER BY "crimeCount" DESC
-     LIMIT 50`);
-    return criminals.map((criminal, index) => ({
-        rank: index + 1,
-        criminalInfo: {
-            name: criminal.name,
-            age: criminal.age ?? undefined,
-            gender: criminal.gender ?? undefined,
-            description: criminal.description,
-            knownAliases: criminal.knownAliases,
-            photoUrl: criminal.photoUrl ?? undefined,
-            status: criminal.status,
-        },
-        crimeCount: criminal.crimeCount,
-        mostFrequentCrime: types_1.CrimeType.THEFT,
-        dangerLevel: calculateRiskLevel(criminal.crimeCount),
-    }));
+    return (0, cache_js_1.cached)('analytics:criminal-rankings', async () => {
+        // Support both legacy backend table name and the public table created by Supabase migrations (006)
+        // Try camelCase first (older), then snake_case public table.
+        let criminals = [];
+        try {
+            criminals = await (0, database_1.query)(`SELECT name, age, gender, description, "knownAliases", "photoUrl", status, "crimeCount", intensity, score, "mostFrequentCrime"
+           FROM "CriminalRecord"
+           ORDER BY "crimeCount" DESC
+           LIMIT 50`);
+        }
+        catch {
+            // ignore, try next table
+        }
+        if (!criminals || criminals.length === 0) {
+            try {
+                criminals = await (0, database_1.query)(`SELECT name, age, gender, description, known_aliases, photo_url, status, crime_count, intensity, score, most_frequent_crime
+             FROM criminal_records
+             ORDER BY COALESCE(score, crime_count * COALESCE(intensity, 1) * 10) DESC
+             LIMIT 50`);
+            }
+            catch {
+                // final fallback: empty
+                criminals = [];
+            }
+        }
+        return (criminals || []).map((criminal, index) => {
+            const crimeCount = Number(criminal.crimeCount ?? criminal.crime_count ?? 0);
+            const score = Number(criminal.score ?? crimeCount * (Number(criminal.intensity) || 1) * 10);
+            const aliases = (criminal.knownAliases ?? criminal.known_aliases ?? []);
+            const photo = criminal.photoUrl ?? criminal.photo_url ?? undefined;
+            const mfc = (criminal.mostFrequentCrime ?? criminal.most_frequent_crime ?? 'OTHER');
+            return {
+                rank: index + 1,
+                criminalInfo: {
+                    name: criminal.name,
+                    age: criminal.age ?? undefined,
+                    gender: criminal.gender ?? undefined,
+                    description: criminal.description,
+                    knownAliases: Array.isArray(aliases) ? aliases : [],
+                    photoUrl: photo ?? undefined,
+                    status: criminal.status || 'UNDER_REVIEW',
+                },
+                crimeCount,
+                mostFrequentCrime: Object.values(types_1.CrimeType).includes(mfc) ? mfc : types_1.CrimeType.OTHER,
+                dangerLevel: calculateRiskLevel(crimeCount),
+            };
+        });
+    }, { ttlMs: cache_js_1.CACHE_TTL.STATS_AND_RANKINGS });
 }
 async function getPhilanthropistRankings() {
-    const users = await (0, database_1.query)(`SELECT u.id, u.name, u.avatar, COUNT(c.id)::text AS cnt
+    return (0, cache_js_1.cached)('analytics:philanthropist-rankings', async () => {
+        // Prefer dedicated volunteers table (from Supabase migration 006 / admin management) if it has rows.
+        let volunteers = [];
+        try {
+            volunteers = await (0, database_1.query)(`SELECT id, name, avatar, activity_count, intensity, score
+           FROM volunteers
+           ORDER BY COALESCE(score, activity_count * COALESCE(intensity, 1) * 10) DESC
+           LIMIT 50`);
+        }
+        catch {
+            // ignore
+        }
+        if (volunteers && volunteers.length > 0) {
+            return volunteers.map((v, index) => {
+                const activity = Number(v.activity_count ?? v.activityCount ?? 0);
+                const intensity = Number(v.intensity ?? 1);
+                const score = Number(v.score ?? activity * intensity * 10);
+                return {
+                    rank: index + 1,
+                    userId: v.id || `vol-${index}`,
+                    name: v.name || 'Volunteer',
+                    avatar: v.avatar ?? undefined,
+                    reportsSubmitted: activity,
+                    accuracy: Math.min(1, Math.max(0, intensity / 10)),
+                    contribution: Math.round(score),
+                };
+            });
+        }
+        // Fallback: rank users by number of submitted crimes (proxy for top contributors/reporters).
+        const users = await (0, database_1.query)(`SELECT u.id, u.name, u.avatar, COUNT(c.id)::text AS cnt
      FROM "User" u
      LEFT JOIN "Crime" c ON c."userId" = u.id
      GROUP BY u.id, u.name, u.avatar
      ORDER BY COUNT(c.id) DESC
      LIMIT 50`);
-    return users.map((user, index) => ({
-        rank: index + 1,
-        userId: user.id,
-        name: user.name,
-        avatar: user.avatar ?? undefined,
-        reportsSubmitted: Number(user.cnt),
-        accuracy: 0.95,
-        contribution: Number(user.cnt) * 10,
-    }));
+        return users.map((user, index) => ({
+            rank: index + 1,
+            userId: user.id,
+            name: user.name,
+            avatar: user.avatar ?? undefined,
+            reportsSubmitted: Number(user.cnt),
+            accuracy: 0.95,
+            contribution: Number(user.cnt) * 10,
+        }));
+    }, { ttlMs: cache_js_1.CACHE_TTL.STATS_AND_RANKINGS });
 }
 function calculateRiskLevel(count) {
     if (count >= 50)

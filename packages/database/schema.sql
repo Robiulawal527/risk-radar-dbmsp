@@ -477,8 +477,10 @@ drop policy if exists sos_select_owner_admin on app.sos_alerts_core;
 drop policy if exists sos_insert_owner on app.sos_alerts_core;
 drop policy if exists sos_update_owner_admin on app.sos_alerts_core;
 drop policy if exists criminal_records_read_admin on app.criminal_records_core;
+drop policy if exists criminal_records_read_public on app.criminal_records_core;
 drop policy if exists criminal_records_write_admin on app.criminal_records_core;
 drop policy if exists criminal_aliases_read_admin on app.criminal_record_aliases;
+drop policy if exists criminal_aliases_read_public on app.criminal_record_aliases;
 drop policy if exists criminal_aliases_write_admin on app.criminal_record_aliases;
 -- Profiles: public can see safe identity data; private contact/settings are owner/admin only.
 create policy user_profiles_select_safe on app.user_profiles for select using (true);
@@ -523,9 +525,9 @@ create policy sos_select_owner_admin on app.sos_alerts_core for select using (us
 create policy sos_insert_owner on app.sos_alerts_core for insert with check (user_id = auth.uid() or app.is_active_admin());
 create policy sos_update_owner_admin on app.sos_alerts_core for update using (user_id = auth.uid() or app.is_active_admin()) with check (user_id = auth.uid() or app.is_active_admin());
 
-create policy criminal_records_read_admin on app.criminal_records_core for select using (app.is_active_admin());
+create policy criminal_records_read_public on app.criminal_records_core for select using (true);
 create policy criminal_records_write_admin on app.criminal_records_core for all using (app.is_active_admin()) with check (app.is_active_admin());
-create policy criminal_aliases_read_admin on app.criminal_record_aliases for select using (app.is_active_admin());
+create policy criminal_aliases_read_public on app.criminal_record_aliases for select using (true);
 create policy criminal_aliases_write_admin on app.criminal_record_aliases for all using (app.is_active_admin()) with check (app.is_active_admin());
 
 -- Grants for Supabase roles. RLS still controls the actual rows/columns through underlying tables.

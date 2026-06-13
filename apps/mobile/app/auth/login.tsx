@@ -46,6 +46,9 @@ export default function LoginScreen() {
         return;
       }
 
+      // Set a minimal authenticated state immediately so routing flips without flicker.
+      // SupabaseAuthSync (onAuthStateChange + applySession) will quickly enrich with
+      // profile data and skills. All mobile users are treated as regular USER (admin tools are web-only).
       await setAuth(
         {
           id: data.user.id,
@@ -61,7 +64,8 @@ export default function LoginScreen() {
         data.session.refresh_token ?? ''
       );
 
-      router.replace('/(tabs)/home' as never);
+      // Go to map (the real home of the experience). The tab layout + index guards are now robust.
+      router.replace('/(tabs)/map' as never);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unexpected error';
       if (message.toLowerCase().includes('network request failed')) {
@@ -133,8 +137,6 @@ export default function LoginScreen() {
             Don't have an account? <Text style={styles.linkHighlight}>Create one</Text>
           </Link>
         </View>
-
-      //<Text style={styles.demoNote}>Demo: demo@riskradar.local / demo123</Text>
       </View>
     </KeyboardAvoidingView>
   );

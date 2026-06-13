@@ -8,6 +8,7 @@ const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const express_2 = require("express");
 const http_error_js_1 = require("./lib/http-error.js");
+const rate_limit_js_1 = require("./lib/rate-limit.js");
 const health_js_1 = require("./routes/health.js");
 const auth_js_1 = require("./routes/auth.js");
 const crimes_js_1 = require("./routes/crimes.js");
@@ -58,6 +59,9 @@ function createApp() {
         allowedHeaders: ['Content-Type', 'Authorization'],
     }));
     const api = (0, express_2.Router)();
+    // Apply rate limiters early (before mounting sub-routers)
+    // This protects the backend + database pool for a 50 concurrent user target.
+    (0, rate_limit_js_1.applyRateLimiters)(app, api);
     api.use('/health', health_js_1.healthRouter);
     api.use('/auth', auth_js_1.authRouter);
     api.use('/crimes', crimes_js_1.crimesRouter);

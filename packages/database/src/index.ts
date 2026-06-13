@@ -28,10 +28,15 @@ function createPool(): pg.Pool {
   return new pg.Pool({
     connectionString: url,
     ssl: sslConfig(url),
-    // Serverless: reuse one warm pool per isolate; keep concurrency low.
-    max: onVercel ? 3 : 20,
-    idleTimeoutMillis: onVercel ? 10_000 : 30_000,
-    connectionTimeoutMillis: onVercel ? 8_000 : 10_000,
+    // Capacity target: ~50 concurrent users.
+    // - On Railway (dedicated backend) we can afford a healthy pool.
+    // - On Vercel / serverless we stay very conservative.
+    // With Supabase, you should also use the connection pooler (pooler.supabase.com) in DATABASE_URL for better scaling.
+    max: onVercel ? 4 : 60,
+    idleTimeoutMillis: onVercel ? 10_000 : 45_000,
+    connectionTimeoutMillis: onVercel ? 8_000 : 12_000,
+    // Allow a few more connections under burst for 50 users doing map refreshes + occasional writes
+    maxUses: onVercel ? 200 : undefined,
   });
 }
 

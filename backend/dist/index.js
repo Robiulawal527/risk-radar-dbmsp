@@ -57,10 +57,28 @@ async function main() {
         cors: { origin: true, credentials: true },
     });
     io.on('connection', (socket) => {
+        // Clients can optionally join a room for their current area/district to reduce noise for 50+ users.
+        // Example from client: socket.emit('join-area', { area: 'Dhanmondi' });
+        socket.on('join-area', (payload) => {
+            const room = payload.area || payload.district;
+            if (room) {
+                socket.join(room);
+            }
+            // Also keep a general room
+            socket.join('global');
+        });
         socket.on('sos:create', async (data, callback) => {
             try {
                 const sosRequest = await sosService.createSOSRequest(data.userId, data.location, data.message);
+                // Broadcast to everyone (backwards compatible) + targeted room if we have area info
                 io.emit('sos:alert', sosRequest);
+                const area = sosRequest?.location?.area || sosRequest?.area;
+                const district = sosRequest?.location?.district;
+                if (area)
+                    io.to(area).emit('sos:alert', sosRequest);
+                if (district)
+                    io.to(district).emit('sos:alert', sosRequest);
+                io.to('global').emit('sos:alert', sosRequest);
                 callback?.({ success: true, data: sosRequest });
             }
             catch (e) {
@@ -72,6 +90,12 @@ async function main() {
             try {
                 const sosRequest = await sosService.updateSOSStatus(data.id, data.userId, data.status);
                 io.emit('sos:updated', sosRequest);
+                const area = sosRequest?.location?.area;
+                const district = sosRequest?.location?.district;
+                if (area)
+                    io.to(area).emit('sos:updated', sosRequest);
+                if (district)
+                    io.to(district).emit('sos:updated', sosRequest);
                 callback?.({ success: true, data: sosRequest });
             }
             catch (e) {

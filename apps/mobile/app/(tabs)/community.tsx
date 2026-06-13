@@ -196,7 +196,7 @@ export default function CommunityScreen() {
         {!rankingsLoading &&
         !rankingsError &&
         (rankings?.philanthropists ?? []).length === 0 ? (
-          <Text style={styles.emptyText}>No volunteer activity yet. (Admins: use Admin tab &gt; Rankings &gt; "Seed demo volunteers")</Text>
+          <Text style={styles.emptyText}>No volunteer activity yet.</Text>
         ) : null}
         {rankings?.philanthropists?.slice(0, 5).map((champ) => (
           <View key={champ.userId} style={styles.championCard}>
@@ -218,37 +218,46 @@ export default function CommunityScreen() {
           <View style={styles.sectionIconRed}>
             <MaterialIcons name="gavel" size={18} color={COLORS.danger} />
           </View>
-          <Text style={styles.sectionTitle}>Criminal Records</Text>
+          <Text style={styles.sectionTitle}>Criminal Ranking</Text>
         </View>
-        {rankingsLoading ? <Text style={styles.emptyText}>Loading criminal records...</Text> : null}
-        {rankingsError ? <Text style={styles.emptyText}>Could not load criminal records.</Text> : null}
+        {rankingsLoading ? <Text style={styles.emptyText}>Loading rankings...</Text> : null}
+        {rankingsError ? <Text style={styles.emptyText}>Could not load rankings.</Text> : null}
         {!rankingsLoading &&
         !rankingsError &&
         (rankings?.criminals ?? []).length === 0 ? (
-          <Text style={styles.emptyText}>No criminal records yet. (Admins: use Admin tab &gt; Rankings panel &gt; "Seed demo criminals" for showcase.)</Text>
+          <Text style={styles.emptyText}>No criminal ranking data yet.</Text>
         ) : null}
         {rankings?.criminals?.slice(0, 5).map((criminal) => (
-          <View key={`${criminal.rank}-${criminal.criminalInfo.name}`} style={styles.criminalCard}>
-            <View style={styles.criminalHeader}>
-              <Text style={styles.criminalName} numberOfLines={1}>
-                #{criminal.rank} {criminal.criminalInfo.name}
-              </Text>
-              <View
-                style={[
-                  styles.dangerBadge,
-                  criminal.dangerLevel === 'CRITICAL' ? styles.criticalBadge : styles.highBadge,
-                ]}
-              >
-                <Text style={styles.dangerText}>{criminal.dangerLevel}</Text>
-              </View>
+          <View
+            key={`${criminal.rank}-${criminal.criminalInfo.name}`}
+            style={[styles.championCard, styles.criminalRankRow]}
+          >
+            <View style={[styles.rankBadge, styles.rankBadgeDanger]}>
+              <Text style={styles.rankText}>#{criminal.rank}</Text>
             </View>
-            <Text style={styles.criminalDesc} numberOfLines={3}>
-              {criminal.criminalInfo.description}
-            </Text>
-            <Text style={styles.criminalStats}>
-              {criminal.crimeCount} linked incidents •{' '}
-              {String(criminal.mostFrequentCrime).replace(/_/g, ' ')}
-            </Text>
+            <View style={styles.rankInfo}>
+              <View style={styles.criminalNameRow}>
+                <Text style={styles.championName} numberOfLines={1}>
+                  {criminal.criminalInfo.name}
+                </Text>
+                <View
+                  style={[
+                    styles.dangerBadge,
+                    criminal.dangerLevel === 'CRITICAL' ? styles.criticalBadge : styles.highBadge,
+                  ]}
+                >
+                  <Text style={styles.dangerText}>{criminal.dangerLevel}</Text>
+                </View>
+              </View>
+              {criminal.criminalInfo.description ? (
+                <Text style={styles.criminalDescLine} numberOfLines={2}>
+                  {criminal.criminalInfo.description}
+                </Text>
+              ) : null}
+              <Text style={styles.championStats}>
+                {criminal.crimeCount} incidents • {String(criminal.mostFrequentCrime).replace(/_/g, ' ')}
+              </Text>
+            </View>
           </View>
         ))}
       </View>
@@ -429,6 +438,25 @@ const styles = StyleSheet.create({
   rankInfo: { flex: 1, marginLeft: SPACING.md },
   championName: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
   championStats: { color: COLORS.textMuted, fontSize: 11, marginTop: 2 },
+  criminalRankRow: {
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.danger,
+  },
+  rankBadgeDanger: {
+    backgroundColor: COLORS.danger,
+  },
+  criminalNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  criminalDescLine: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  // legacy criminal card styles kept for reference (no longer used after harmonizing with volunteer ranking cards)
   criminalCard: {
     backgroundColor: COLORS.card,
     padding: SPACING.md,

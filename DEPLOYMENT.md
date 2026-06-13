@@ -78,6 +78,30 @@ BACKEND_PROXY_TARGET=https://<your-railway-service>.up.railway.app
 
 The frontend calls its own `/api/backend/*` routes, and those routes proxy to Railway using `NEXT_PUBLIC_API_URL` or `BACKEND_PROXY_TARGET`.
 
+## Capacity Target: 50 Concurrent Users
+
+The application has been architected (rate limiting, DB pool tuning, in-memory caching for analytics/heatmap/rankings, Socket.io room support, cache invalidation on writes) to comfortably support **~50 concurrent users** (roughly a busy small city neighborhood or university campus) on modest paid plans.
+
+### Recommended Production Setup for 50 Users
+- **Supabase**: Pro plan (or higher). Use the **connection pooler** (`pooler.supabase.com:6543`) in your `DATABASE_URL`. This is critical.
+- **Backend**: Railway (Standard or higher). The Express + Socket.io server needs a persistent instance.
+- **Web**: Vercel (Hobby is usually fine; the heavy work is offloaded).
+
+Monitor:
+- `/api/health` → look at `capacity.dbPool.waitingCount` (should stay near 0)
+- Supabase dashboard → Database → Compute + Connection count
+- Railway metrics (CPU/Memory)
+
+With 50 users you will see:
+- A handful of active SOS at peak
+- Frequent map refreshes (cached for 25-35s)
+- Occasional crime reports
+
+If you start seeing high `waitingCount` or Supabase connection exhaustion, the first things to do are:
+1. Switch DATABASE_URL to the Supabase pooler
+2. Increase Railway resources slightly
+3. Consider client-side debouncing on map/analytics polling (already partially present in the mobile/web apps)
+
 ## Admin Approval
 
 Approving an admin requires both app-level approval fields:

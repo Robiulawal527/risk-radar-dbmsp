@@ -15,10 +15,21 @@ exports.healthRouter.get('/live', (_req, res) => {
 exports.healthRouter.get('/', (0, async_handler_js_1.asyncHandler)(async (_req, res) => {
     try {
         await database_1.pool.query('SELECT 1');
+        // Rough capacity signal for operators (50 concurrent user target)
+        const poolStats = {
+            total: database_1.pool.totalCount ?? null,
+            idle: database_1.pool.idleCount ?? null,
+            waiting: database_1.pool.waitingCount ?? null,
+        };
         res.json({
             status: 'ok',
             timestamp: new Date().toISOString(),
             database: 'connected',
+            capacity: {
+                targetConcurrentUsers: 50,
+                dbPool: poolStats,
+                note: 'Monitor pool waitingCount and idle under load. Prefer Supabase pooler for DATABASE_URL.',
+            },
         });
     }
     catch (error) {

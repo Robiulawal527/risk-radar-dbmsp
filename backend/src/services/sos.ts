@@ -2,6 +2,7 @@ import { query, queryOne } from '@risk-radar/database';
 import { SOSStatus, type Location, type SOSRequest } from '@risk-radar/types';
 import { HttpError } from '../lib/http-error.js';
 import { notifyUsersNearNewSos } from './nearby-alerts.js';
+import { invalidatePrefix } from '../lib/cache.js';
 
 type SosRow = {
   id: string;
@@ -70,6 +71,10 @@ export async function createSOSRequest(
   );
 
   if (!sosRequest) throw new HttpError(500, 'Failed to create SOS');
+
+  // Invalidate any caches that might include live SOS counts (defensive for 50 user target)
+  invalidatePrefix('analytics:');
+
   void notifyUsersNearNewSos({
     sosId: sosRequest.id,
     latitude: sosRequest.latitude,
