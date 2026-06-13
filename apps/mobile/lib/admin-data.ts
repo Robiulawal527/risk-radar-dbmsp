@@ -97,8 +97,8 @@ export type VolunteerInput = {
 };
 
 const CRIME_TABLES = ['crimes', 'Crime', 'crime', 'incidents'] as const;
-const CRIMINAL_TABLES = ['criminal_records', 'CriminalRecord'] as const;
-const VOLUNTEER_TABLES = ['volunteers', 'Volunteer'] as const;
+const CRIMINAL_TABLES = ['criminal_records', 'public.criminal_records', 'CriminalRecord'] as const;
+const VOLUNTEER_TABLES = ['volunteers', 'public.volunteers', 'Volunteer'] as const;
 const CRIME_REPORT_STATUSES = new Set(['PENDING', 'APPROVED', 'REJECTED', 'RESOLVED', 'ACTIVE']);
 const CRIMINAL_RECORD_STATUSES = new Set(['ACTIVE', 'INACTIVE', 'WANTED', 'ARRESTED', 'UNKNOWN']);
 
@@ -176,6 +176,10 @@ function isMissingOrShapeError(message: string) {
   return /relation .* does not exist|table .* does not exist|could not find the table|schema cache|column .* does not exist|could not find .* column|does not exist/i.test(
     message
   );
+}
+
+function isPermissionError(message: string) {
+  return /row-level security|permission denied|policy|42501|unauthorized|not authorized|insufficient_privilege/i.test(message);
 }
 
 async function detectReadableTable(candidates: readonly string[]) {
@@ -448,14 +452,26 @@ export async function updateAdminSosStatus(id: string, status: SOSStatus) {
 }
 
 export async function fetchCriminalRecords(limit = 80): Promise<AdminCriminalRecord[]> {
-  const client = getClient();
-  const table = await detectReadableTable(CRIMINAL_TABLES);
-  const { data, error } = await client.from(table).select('*').limit(limit);
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as Row[])
-    .map(normalizeCriminal)
-    .filter((row) => row.id)
-    .sort((a, b) => b.score - a.score);
+  try {
+    const client = getClient();
+    const table = await detectReadableTable(CRIMINAL_TABLES);
+    const { data, error } = await client.from(table).select('*').limit(limit);
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as Row[])
+      .map(normalizeCriminal)
+      .filter((row) => row.id)
+      .sort((a, b) => b.score - a.score);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const lower = message.toLowerCase();
+    if (isMissingOrShapeError(lower) || isPermissionError(lower)) {
+      // Regular (non-admin) mobile users may be blocked by RLS on criminal_records tables.
+      // Return empty so fetchCommunityRankings can reliably fall back to the backend API
+      // which serves public rankings to all authenticated users.
+      return [];
+    }
+    throw err;
+  }
 }
 
 export async function saveCriminalRecord(input: CriminalRecordInput) {
@@ -480,14 +496,24 @@ export async function deleteCriminalRecord(id: string) {
 }
 
 export async function fetchVolunteers(limit = 80): Promise<AdminVolunteer[]> {
-  const client = getClient();
-  const table = await detectReadableTable(VOLUNTEER_TABLES);
-  const { data, error } = await client.from(table).select('*').limit(limit);
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as Row[])
-    .map(normalizeVolunteer)
-    .filter((row) => row.id)
-    .sort((a, b) => b.score - a.score);
+  try {
+    const client = getClient();
+    const table = await detectReadableTable(VOLUNTEER_TABLES);
+    const { data, error } = await client.from(table).select('*').limit(limit);
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as Row[])
+      .map(normalizeVolunteer)
+      .filter((row) => row.id)
+      .sort((a, b) => b.score - a.score);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const lower = message.toLowerCase();
+    if (isMissingOrShapeError(lower) || isPermissionError(lower)) {
+      // Regular users: fall back gracefully so community rankings can come from backend API.
+      return [];
+    }
+    throw err;
+  }
 }
 
 export async function saveVolunteer(input: VolunteerInput) {

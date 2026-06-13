@@ -81,10 +81,11 @@ export function clearAll() {
   store.clear();
 }
 
-// Pre-defined TTLs suitable for 50 concurrent users
+// Pre-defined TTLs suitable for 50 concurrent users.
+// Kept reasonably short for production freshness of public rankings (criminal/volunteer data
+// may be updated by admins via direct Supabase, bypassing backend invalidation).
 export const CACHE_TTL = {
-  // Public stats / rankings can be slightly stale for a short period
-  STATS_AND_RANKINGS: 35_000, // 35 seconds
-  HEATMAP: 25_000,            // 25 seconds (map is more real-time sensitive)
-  SOCIAL_RADAR: 20_000,
+  STATS_AND_RANKINGS: 15_000, // 15 seconds
+  HEATMAP: 15_000,
+  SOCIAL_RADAR: 10_000,
 };
