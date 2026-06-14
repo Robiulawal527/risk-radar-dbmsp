@@ -222,33 +222,40 @@ export default function SosScreen() {
     };
   };
 
-  /** Creates an SOS via Supabase first, API second, and local pending storage as the final fallback. */
+  /** Creates an SOS via backend API first (for validation, ownership enforcement, socket broadcast + notifyUsersNearNewSos fan-out to nearby alert subscribers), Supabase direct second (resilience), local pending as last resort. */
   const sendEmergencyAlert = async () => {
     setSending(true);
     Vibration.vibrate([0, 180, 80, 180]);
     try {
       const coordinates = await readCoordinates();
       try {
-        let directError: unknown;
-        const direct = await createSosAlertInSupabase({
-          coordinates,
-          message: 'Emergency assistance requested',
-        }).catch((error) => {
-          directError = error;
-          return null;
-        });
+        let apiOrDirectError: unknown;
+        // 1. Prefer API (side effects: backend createSOSRequest does pg insert + io.emit('sos:alert') + nearby notifications)
+        let apiOk = false;
+        try {
+          await requestWithFallback(CREATE_SOS_ENDPOINTS, async (endpoint) => {
+            const response = await api.post<ApiResponse<SOSRequest>>(endpoint, buildSOSPayload(coordinates));
+            if (response.data.success === false) {
+              throw new Error(response.data.message || response.data.error || 'Could not create SOS request.');
+            }
+            return response.data;
+          });
+          apiOk = true;
+        } catch (apiErr) {
+          apiOrDirectError = apiErr;
+        }
 
-        if (!direct) {
-          try {
-            await requestWithFallback(CREATE_SOS_ENDPOINTS, async (endpoint) => {
-              const response = await api.post<ApiResponse<SOSRequest>>(endpoint, buildSOSPayload(coordinates));
-              if (response.data.success === false) {
-                throw new Error(response.data.message || response.data.error || 'Could not create SOS request.');
-              }
-              return response.data;
-            });
-          } catch (apiError) {
-            throw directError instanceof Error ? directError : apiError;
+        if (!apiOk) {
+          // 2. Direct Supabase fallback (still records in DB for map/clients using realtime/public tables)
+          const direct = await createSosAlertInSupabase({
+            coordinates,
+            message: 'Emergency assistance requested',
+          }).catch((error) => {
+            apiOrDirectError = error;
+            return null;
+          });
+          if (!direct) {
+            throw apiOrDirectError instanceof Error ? apiOrDirectError : new Error('Both API and Supabase SOS create failed.');
           }
         }
         await queryClient.invalidateQueries({ queryKey: ['sos-my'] });

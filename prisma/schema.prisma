@@ -1,3 +1,12 @@
+// NOTE: This Prisma schema is UNUSED / vestigial in the current Risk Radar architecture.
+// The app uses:
+//   - Direct PostgreSQL via pg Pool (@risk-radar/database)
+//   - Supabase JS client (auth + realtime + RLS-protected public.* tables for some reads/writes)
+//   - Manual SQL migrations in packages/database/migrations + schema.sql
+// Prisma client + this file add no runtime value and can confuse `prisma generate` / `prisma db push`.
+// If adopting Prisma for type-safe models in future, expand this file with models matching "Crime", "User", "SOSRequest", "Evidence", "profiles", "admins", "Notification" etc.
+// For now we keep a placeholder so existing package.json scripts don't 404, but recommend removing prisma/ + root @prisma/* deps.
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,3 +16,5 @@ datasource db {
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
+
+// No models defined on purpose. See packages/database for the source of truth.

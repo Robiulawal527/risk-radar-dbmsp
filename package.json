@@ -27,7 +27,6 @@
   "devDependencies": {
     "dotenv": "^16.4.5",
     "prettier": "^3.0.0",
-    "prisma": "^6.19.3",
     "turbo": "^2.9.16",
     "typescript": "^5.5.3"
   },
@@ -36,9 +35,7 @@
     "pnpm": ">=9.0.0"
   },
   "packageManager": "pnpm@9.15.4",
-  "dependencies": {
-    "@prisma/client": "^6.19.3"
-  },
+  "dependencies": {},
   "pnpm": {
     "overrides": {
       "fast-xml-parser": "^5.8.0",

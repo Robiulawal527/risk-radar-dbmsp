@@ -191,10 +191,10 @@ export async function create(data: Partial<Crime>, userId: string): Promise<Crim
   const crime = await queryOne<CrimeRow>(
     `INSERT INTO "Crime" (
       type, category, title, description, latitude, longitude, address, area, district, division,
-      severity, "reportedBy", "userId", "victimInfo", "criminalInfo", witnesses, "dateTime", "createdAt", "updatedAt"
+      severity, status, "reportedBy", "userId", "victimInfo", "criminalInfo", witnesses, "dateTime", "createdAt", "updatedAt"
     ) VALUES (
       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-      $11, $12, $13, $14::jsonb, $15::jsonb, $16::jsonb, $17, NOW(), NOW()
+      $11, $12, $13, $14, $15::jsonb, $16::jsonb, $17::jsonb, $18, NOW(), NOW()
     ) RETURNING *`,
     [
       data.type!,
@@ -208,6 +208,7 @@ export async function create(data: Partial<Crime>, userId: string): Promise<Crim
       normalizeOptionalText(location.district, 120),
       normalizeOptionalText(location.division, 120),
       severity,
+      data.status || 'PENDING',
       reportedBy,
       userId,
       JSON.stringify(data.victimInfo || {}),

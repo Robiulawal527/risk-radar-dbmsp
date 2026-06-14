@@ -311,11 +311,22 @@ async function insertCrimeIntoSupabase(input: CrimeInput, auth: ReportAuth): Pro
 }
 
 export async function submitCrimeReport(input: CrimeInput): Promise<Crime> {
-  let supabaseError: unknown;
+  // Prefer the backend API for writes: it performs canonical validation, inserts into "Crime",
+  // rate-limits, authorizes via requireAuth, and triggers notifyUsersNearNewCrime (fan-out to
+  // users with alertsEnabled + location + the socket realtime + Notification rows).
+  // Direct Supabase is a resilience fallback only (backend down, still record the report).
+  let apiError: unknown;
+  try {
+    const response = await api.post<{ success: boolean; data: Crime }>('/crimes', input);
+    if (response?.data?.data) return response.data.data;
+  } catch (e) {
+    apiError = e;
+  }
 
+  // Fallback path (kept for offline/degraded backend tolerance and legacy schema compatibility).
+  let supabaseError: unknown;
   if (isSupabaseConfigured()) {
     const auth = await getReportAuth();
-
     if (auth) {
       try {
         const crime = await insertCrimeIntoSupabase(input, auth);
@@ -337,12 +348,8 @@ export async function submitCrimeReport(input: CrimeInput): Promise<Crime> {
     }
   }
 
-  try {
-    const response = await api.post<{ success: boolean; data: Crime }>('/crimes', input);
-    return response.data.data;
-  } catch (apiError) {
-    throw supabaseError instanceof Error ? supabaseError : apiError;
-  }
+  // Surface the most relevant error (API preferred for side-effects, but show real cause).
+  throw (apiError instanceof Error ? apiError : (supabaseError instanceof Error ? supabaseError : new Error('Failed to submit report via API and Supabase.')));
 }
 
 function toMatch(row: ProfileRow): SocialRadarMatch {
